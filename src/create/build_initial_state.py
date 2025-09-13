@@ -1,8 +1,8 @@
 """
 Build Initial State Module
 
-Creates the initial 1200 policies with vehicles and drivers.
-This is Step 1 of the insurance policy system generation.
+Creates the initial families, policies, vehicles, drivers, and driver-vehicle assignments.
+This is Step 1 of the insurance policy system generation with new family-centric approach.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import random
 import yaml
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 # Load configuration
 CONFIG_PATH = Path("config/policy_system_config.yaml")
@@ -36,74 +36,127 @@ VEHICLE_TYPES = CONFIG['vehicles']['types']
 # Driver age ranges
 PRIMARY_DRIVER_AGE_RANGE = tuple(CONFIG['drivers']['age_ranges']['primary'])
 SECONDARY_DRIVER_AGE_RANGE = tuple(CONFIG['drivers']['age_ranges']['secondary'])
-SPOUSE_DRIVER_AGE_RANGE = tuple(CONFIG['drivers']['age_ranges']['spouse'])
+
+# Driver name generation
+FIRST_NAMES = CONFIG['drivers']['name_generation']['first_names']
+LAST_NAMES = CONFIG['drivers']['name_generation']['last_names']
+
+# Driver assignment rules
+EXPOSURE_ALLOCATIONS = CONFIG['driver_assignment']['exposure_allocations']
 
 
-def create_initial_policies() -> None:
+def create_initial_state() -> None:
     """
-    Create initial 1200 policies with associated vehicles and drivers.
+    Create initial families, policies, vehicles, drivers, and driver-vehicle assignments.
     
     This function generates:
+    - families_master.csv: Family master data
     - policies_master.csv: Policy master data
     - vehicles_master.csv: Vehicle master data
     - drivers_master.csv: Driver master data
+    - driver_vehicle_assignments.csv: Driver-vehicle assignment data
     """
-    print("Creating initial 1200 policies...")
+    print("Creating initial state with family-centric approach...")
     print(f"Date range: {START_DATE.strftime('%Y-%m-%d')} to {END_DATE.strftime('%Y-%m-%d')}")
     
-    # Generate policy data
+    # Calculate required initial families to achieve target inforce
+    target_inforce_2018 = 1200
+    required_initial_families = 1103  # Fine-tuned value from previous analysis
+    
+    print(f"  Creating {required_initial_families} initial families to achieve ~{target_inforce_2018} inforce by end of 2018")
+    
+    # Generate family data
+    print("  - Generating family master data...")
+    families = _generate_family_data(required_initial_families)
+    _save_csv_file(families, CONFIG['data_files']['master']['families'])
+    
+    # Generate policy data (sort families by start date first for sequential policy numbering)
     print("  - Generating policy master data...")
-    policies = _generate_policy_data()
+    families_sorted = sorted(families, key=lambda f: f['start_date'])
+    policies = _generate_policy_data(families_sorted)
     _save_csv_file(policies, CONFIG['data_files']['master']['policies'])
     
     # Generate vehicle data
     print("  - Generating vehicle master data...")
-    vehicles = _generate_vehicle_data(policies)
+    vehicles = _generate_vehicle_data(families_sorted)
     _save_csv_file(vehicles, CONFIG['data_files']['master']['vehicles'])
     
     # Generate driver data
     print("  - Generating driver master data...")
-    drivers = _generate_driver_data(policies)
+    drivers = _generate_driver_data(families_sorted)
     _save_csv_file(drivers, CONFIG['data_files']['master']['drivers'])
     
-    # Calculate premiums based on vehicles and drivers
+    # Generate driver-vehicle assignments
+    print("  - Generating driver-vehicle assignments...")
+    assignments = _generate_driver_vehicle_assignments(families_sorted, vehicles, drivers)
+    _save_csv_file(assignments, CONFIG['data_files']['master']['driver_vehicle_assignments'])
+    
+    # Calculate premiums based on assignments
     print("  - Calculating policy premiums...")
-    policies_with_premiums = _calculate_policy_premiums(policies, vehicles, drivers)
+    policies_with_premiums = _calculate_policy_premiums(policies, assignments)
     _save_csv_file(policies_with_premiums, CONFIG['data_files']['master']['policies'])
     
     print("Initial state creation completed successfully!")
 
 
-def _generate_policy_data() -> List[Dict[str, Any]]:
+def _generate_family_data(num_families: int) -> List[Dict[str, Any]]:
+    """Generate initial family master data."""
+    families = []
+    
+    for i in range(num_families):
+        family_id = f"FAM{i+1:06d}"  # 6-digit family ID starting from FAM000001
+        
+        # Distribute start dates across 2018 (Jan 1 to Dec 31) instead of sequential
+        days_in_2018 = 365
+        start_date = START_DATE + timedelta(days=random.randint(0, days_in_2018-1))
+        
+        # Determine family type
+        family_type = _select_family_type()
+        
+        # Generate family composition based on type
+        family_composition = _generate_family_composition(family_type)
+        
+        family = {
+            "family_id": family_id,
+            "family_type": family_type,
+            "adults": family_composition['adults'],
+            "teens": family_composition['teens'],
+            "vehicles": family_composition['vehicles'],
+            "max_vehicles": family_composition['max_vehicles'],
+            "start_date": start_date.strftime("%Y-%m-%d"),
+            "status": "active"
+        }
+        
+        families.append(family)
+    
+    return families
+
+
+def _generate_policy_data(families: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Generate initial policy master data."""
     policies = []
     
-    for i in range(TOTAL_POLICIES):
+    for i, family in enumerate(families):
         policy_no = f"{i+1:08d}"  # 8-digit policy number starting from 00000001
         
-        # Sequential start date for validation - Policy 00000001 starts Jan 1, 2018
-        start_date = START_DATE + timedelta(days=i)
-        
         # Initial expiry date (1 year later)
+        start_date = datetime.strptime(family["start_date"], "%Y-%m-%d")
         expiry_date = start_date + timedelta(days=365)
         
-        # Premium will be calculated after vehicles and drivers are generated
-        # Placeholder for now - will be updated in _calculate_policy_premium
+        # Premium will be calculated after assignments are generated
         premium = 0.0
         
         # Client tenure starts at 0 (new policy)
         client_tenure_days = 0
         
-        # Determine family type
-        family_type = _select_family_type()
-        
         policy = {
             "policy_no": policy_no,
-            "start_date": start_date.strftime("%Y-%m-%d"),
+            "family_id": family["family_id"],
+            "start_date": family["start_date"],
             "current_expiry_date": expiry_date.strftime("%Y-%m-%d"),
             "premium_paid": premium,
             "client_tenure_days": client_tenure_days,
-            "family_type": family_type,
+            "family_type": family["family_type"],
             "status": "active"
         }
         
@@ -112,29 +165,17 @@ def _generate_policy_data() -> List[Dict[str, Any]]:
     return policies
 
 
-def _generate_vehicle_data(policies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Generate initial vehicle master data with per-policy indexing."""
+def _generate_vehicle_data(families: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Generate initial vehicle master data."""
     vehicles = []
     
-    for policy in policies:
-        family_type = policy["family_type"]
-        policy_no = policy["policy_no"]
+    for family in families:
+        family_id = family["family_id"]
+        num_vehicles = family["vehicles"]
         
-        # Determine number of vehicles based on family type
-        if family_type == "single_person_single_vehicle":
-            num_vehicles = 1
-        elif family_type == "single_driver_multi_vehicle":
-            num_vehicles = random.randint(2, 3)
-        elif family_type == "family_multi_vehicle":
-            # Weighted distribution from config
-            vehicle_weights = CONFIG['family_types']['family_multi_vehicle']['vehicle_weights']
-            num_vehicles = random.choices([2, 3, 4], weights=vehicle_weights)[0]
-        else:  # family_single_vehicle
-            num_vehicles = 1
-        
-        # Generate vehicles for this policy with per-policy indexing (01, 02, 03...)
+        # Generate vehicles for this family with per-family indexing (01, 02, 03...)
         for v in range(num_vehicles):
-            vehicle_no = f"{v + 1:02d}"  # Per-policy indexing: 01, 02, 03...
+            vehicle_no = f"{v + 1:02d}"  # Per-family indexing: 01, 02, 03...
             
             # Generate VIN (17 characters)
             vin = _generate_vin()
@@ -147,12 +188,12 @@ def _generate_vehicle_data(policies: List[Dict[str, Any]]) -> List[Dict[str, Any
             latest_year = CONFIG['vehicles']['model_year_range']['latest']
             model_year = random.randint(earliest_year, latest_year)
             
-            # Effective date (same as policy start)
-            effective_date = policy["start_date"]
+            # Effective date (same as family start)
+            effective_date = family["start_date"]
             
             vehicle = {
                 "vehicle_no": vehicle_no,
-                "policy_no": policy_no,
+                "family_id": family_id,
                 "vin": vin,
                 "vehicle_type": vehicle_type,
                 "model_year": model_year,
@@ -165,58 +206,77 @@ def _generate_vehicle_data(policies: List[Dict[str, Any]]) -> List[Dict[str, Any
     return vehicles
 
 
-def _generate_driver_data(policies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Generate initial driver master data with per-policy indexing and proper spouse logic."""
+def _generate_driver_data(families: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Generate initial driver master data."""
     drivers = []
     
-    for policy in policies:
-        family_type = policy["family_type"]
-        policy_no = policy["policy_no"]
+    for family in families:
+        family_id = family["family_id"]
+        num_adults = family["adults"]
+        num_teens = family["teens"]
         
-        # Determine number of drivers based on family type
-        if family_type == "single_person_single_vehicle":
-            num_drivers = 1
-        elif family_type == "single_driver_multi_vehicle":
-            num_drivers = 1
-        elif family_type == "family_multi_vehicle":
-            num_drivers = random.randint(2, 4)
-        else:  # family_single_vehicle
-            num_drivers = random.randint(1, 2)
-        
-        # Generate drivers for this policy with per-policy indexing (01, 02, 03...)
-        for d in range(num_drivers):
-            driver_no = f"{d + 1:02d}"  # Per-policy indexing: 01, 02, 03...
+        # Generate adult drivers
+        for a in range(num_adults):
+            driver_no = f"{a + 1:02d}"  # Per-family indexing: 01, 02, 03...
             
             # Generate Ontario-style license number
             license_no = _generate_ontario_license()
             
-            # Determine driver type and age
-            if d == 0:  # Primary driver
-                driver_type = "primary"
-                age = random.randint(*PRIMARY_DRIVER_AGE_RANGE)
-            elif family_type in ["family_multi_vehicle", "family_single_vehicle"] and d == 1:
-                # Spouse - only if they are primary driver on a vehicle
-                # For now, assume spouse is primary driver on at least one vehicle
-                driver_type = "spouse"
-                age = random.randint(*SPOUSE_DRIVER_AGE_RANGE)
-            else:
-                # Secondary drivers (kids)
-                driver_type = "secondary"
-                age = random.randint(*SECONDARY_DRIVER_AGE_RANGE)
+            # Generate unique driver name
+            driver_name = _generate_driver_name()
+            
+            # Adult drivers are primary age
+            age = random.randint(*PRIMARY_DRIVER_AGE_RANGE)
             
             # Calculate birthday (for aging calculations)
             current_year = 2018
             birth_year = current_year - age
             birthday = datetime(birth_year, random.randint(1, 12), random.randint(1, 28))
             
-            # Effective date (same as policy start)
-            effective_date = policy["start_date"]
+            # Effective date (same as family start)
+            effective_date = family["start_date"]
             
             driver = {
                 "driver_no": driver_no,
-                "policy_no": policy_no,
+                "family_id": family_id,
                 "license_no": license_no,
-                "driver_type": driver_type,
+                "driver_name": driver_name,
+                "driver_type": "adult",
+                "age": age,
+                "birthday": birthday.strftime("%Y-%m-%d"),
+                "effective_date": effective_date,
+                "status": "active"
+            }
+            
+            drivers.append(driver)
+        
+        # Generate teen drivers
+        for t in range(num_teens):
+            driver_no = f"{num_adults + t + 1:02d}"  # Continue numbering after adults
+            
+            # Generate Ontario-style license number
+            license_no = _generate_ontario_license()
+            
+            # Generate unique driver name
+            driver_name = _generate_driver_name()
+            
+            # Teen drivers are secondary age
+            age = random.randint(*SECONDARY_DRIVER_AGE_RANGE)
+            
+            # Calculate birthday (for aging calculations)
+            current_year = 2018
+            birth_year = current_year - age
+            birthday = datetime(birth_year, random.randint(1, 12), random.randint(1, 28))
+            
+            # Effective date (same as family start)
+            effective_date = family["start_date"]
+            
+            driver = {
+                "driver_no": driver_no,
+                "family_id": family_id,
+                "license_no": license_no,
+                "driver_name": driver_name,
+                "driver_type": "teen",
                 "age": age,
                 "birthday": birthday.strftime("%Y-%m-%d"),
                 "effective_date": effective_date,
@@ -226,6 +286,159 @@ def _generate_driver_data(policies: List[Dict[str, Any]]) -> List[Dict[str, Any]
             drivers.append(driver)
     
     return drivers
+
+
+def _generate_driver_vehicle_assignments(families: List[Dict[str, Any]], 
+                                       vehicles: List[Dict[str, Any]], 
+                                       drivers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Generate driver-vehicle assignments with proper exposure calculations."""
+    assignments = []
+    
+    for family in families:
+        family_id = family["family_id"]
+        
+        # Get vehicles and drivers for this family
+        family_vehicles = [v for v in vehicles if v["family_id"] == family_id]
+        family_drivers = [d for d in drivers if d["family_id"] == family_id]
+        
+        # Separate adults and teens
+        adult_drivers = [d for d in family_drivers if d["driver_type"] == "adult"]
+        teen_drivers = [d for d in family_drivers if d["driver_type"] == "teen"]
+        
+        # Create assignments using the new logic
+        family_assignments = _assign_drivers_to_vehicles(family_vehicles, adult_drivers, teen_drivers)
+        
+        # Add assignment records
+        for assignment in family_assignments:
+            assignment_record = {
+                "assignment_id": assignment["assignment_id"],
+                "family_id": family_id,
+                "vehicle_no": assignment["vehicle_no"],
+                "driver_no": assignment["driver_no"],
+                "assignment_type": assignment["assignment_type"],
+                "exposure_factor": assignment["exposure_factor"],
+                "effective_date": family["start_date"],
+                "status": "active"
+            }
+            assignments.append(assignment_record)
+    
+    return assignments
+
+
+def _assign_drivers_to_vehicles(vehicles: List[Dict[str, Any]], 
+                               adult_drivers: List[Dict[str, Any]], 
+                               teen_drivers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Assign drivers to vehicles following the new assignment rules."""
+    assignments = []
+    assignment_counter = 1
+    
+    # Rule: Every vehicle must have exactly 1 primary driver
+    # Rule: Each vehicle can have up to 1 secondary adult + 1 teen
+    
+    for i, vehicle in enumerate(vehicles):
+        vehicle_no = vehicle["vehicle_no"]
+        
+        # Assign primary driver (required)
+        if i < len(adult_drivers):
+            primary_driver = adult_drivers[i]
+            assignments.append({
+                "assignment_id": f"ASS{assignment_counter:08d}",
+                "vehicle_no": vehicle_no,
+                "driver_no": primary_driver["driver_no"],
+                "assignment_type": "primary",
+                "exposure_factor": EXPOSURE_ALLOCATIONS["primary_solo"]  # Will be adjusted if secondary added
+            })
+            assignment_counter += 1
+        
+        # Check if we need to assign secondary adult
+        remaining_adults = adult_drivers[i+1:] if i+1 < len(adult_drivers) else []
+        if remaining_adults and len(assignments) < len(adult_drivers):
+            secondary_adult = remaining_adults[0]
+            assignments.append({
+                "assignment_id": f"ASS{assignment_counter:08d}",
+                "vehicle_no": vehicle_no,
+                "driver_no": secondary_adult["driver_no"],
+                "assignment_type": "secondary_adult",
+                "exposure_factor": EXPOSURE_ALLOCATIONS["secondary_adult"]
+            })
+            assignment_counter += 1
+            
+            # Adjust primary driver exposure
+            for assignment in assignments:
+                if (assignment["vehicle_no"] == vehicle_no and 
+                    assignment["assignment_type"] == "primary"):
+                    assignment["exposure_factor"] = EXPOSURE_ALLOCATIONS["primary_shared"]
+                    break
+        
+        # Check if we need to assign teen
+        if teen_drivers:
+            teen_driver = teen_drivers[0]  # Assign first teen to this vehicle
+            assignments.append({
+                "assignment_id": f"ASS{assignment_counter:08d}",
+                "vehicle_no": vehicle_no,
+                "driver_no": teen_driver["driver_no"],
+                "assignment_type": "secondary_teen",
+                "exposure_factor": EXPOSURE_ALLOCATIONS["teen_secondary"]
+            })
+            assignment_counter += 1
+    
+    # Handle remaining drivers (unassigned)
+    assigned_drivers = set()
+    for assignment in assignments:
+        assigned_drivers.add(assignment["driver_no"])
+    
+    # Check for unassigned adults
+    for driver in adult_drivers:
+        if driver["driver_no"] not in assigned_drivers:
+            assignments.append({
+                "assignment_id": f"ASS{assignment_counter:08d}",
+                "vehicle_no": "UNASSIGNED",
+                "driver_no": driver["driver_no"],
+                "assignment_type": "unassigned",
+                "exposure_factor": 0.0
+            })
+            assignment_counter += 1
+    
+    # Check for unassigned teens
+    for driver in teen_drivers:
+        if driver["driver_no"] not in assigned_drivers:
+            assignments.append({
+                "assignment_id": f"ASS{assignment_counter:08d}",
+                "vehicle_no": "UNASSIGNED",
+                "driver_no": driver["driver_no"],
+                "assignment_type": "unassigned",
+                "exposure_factor": 0.0
+            })
+            assignment_counter += 1
+    
+    return assignments
+
+
+def _generate_family_composition(family_type: str) -> Dict[str, Any]:
+    """Generate family composition based on family type."""
+    family_config = CONFIG['family_types'][family_type]
+    
+    adults = family_config['adults']
+    teens = family_config['teens']
+    
+    # Determine number of vehicles
+    if isinstance(family_config['vehicles'], list):
+        vehicle_weights = family_config.get('vehicle_weights', None)
+        vehicles = random.choices(family_config['vehicles'], weights=vehicle_weights)[0]
+    else:
+        vehicles = family_config['vehicles']
+    
+    # Determine number of teens
+    if isinstance(teens, list):
+        teen_weights = family_config.get('teen_weights', None)
+        teens = random.choices(teens, weights=teen_weights)[0]
+    
+    return {
+        'adults': adults,
+        'teens': teens,
+        'vehicles': vehicles,
+        'max_vehicles': family_config.get('max_vehicles', vehicles)
+    }
 
 
 def _select_family_type() -> str:
@@ -238,7 +451,14 @@ def _select_family_type() -> str:
         if rand <= cumulative:
             return family_type
     
-    return "family_single_vehicle"  # fallback
+    return "single_person"  # fallback
+
+
+def _generate_driver_name() -> str:
+    """Generate a unique driver name."""
+    first_name = random.choice(FIRST_NAMES)
+    last_name = random.choice(LAST_NAMES)
+    return f"{first_name} {last_name}"
 
 
 def _generate_vin() -> str:
@@ -271,20 +491,18 @@ def _generate_ontario_license() -> str:
 
 
 def _calculate_policy_premiums(policies: List[Dict[str, Any]], 
-                              vehicles: List[Dict[str, Any]], 
-                              drivers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Calculate premiums for all policies based on vehicles and drivers."""
+                              assignments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Calculate premiums for all policies based on driver-vehicle assignments."""
     policies_with_premiums = []
     
     for policy in policies:
-        policy_no = policy["policy_no"]
+        family_id = policy["family_id"]
         
-        # Get vehicles and drivers for this policy
-        policy_vehicles = [v for v in vehicles if v["policy_no"] == policy_no]
-        policy_drivers = [d for d in drivers if d["policy_no"] == policy_no]
+        # Get assignments for this family
+        family_assignments = [a for a in assignments if a["family_id"] == family_id]
         
-        # Calculate premium
-        calculated_premium = _calculate_single_policy_premium(policy_vehicles, policy_drivers)
+        # Calculate premium based on assignments
+        calculated_premium = _calculate_single_policy_premium(family_assignments)
         
         # Update policy with calculated premium
         policy["premium_paid"] = calculated_premium
@@ -293,95 +511,27 @@ def _calculate_policy_premiums(policies: List[Dict[str, Any]],
     return policies_with_premiums
 
 
-def _calculate_single_policy_premium(vehicles: List[Dict[str, Any]], 
-                                   drivers: List[Dict[str, Any]]) -> float:
-    """Calculate premium for a single policy based on vehicles and drivers."""
+def _calculate_single_policy_premium(assignments: List[Dict[str, Any]]) -> float:
+    """Calculate premium for a single policy based on driver-vehicle assignments."""
     base_premium = CONFIG['policies']['premium']['base_amount']
     calc_config = CONFIG['policies']['premium']['calculation']
     
-    # Start with base premium
-    total_premium = base_premium
+    total_premium = 0.0
     
-    # Calculate vehicle premium factors
-    vehicle_premium = 0.0
-    for vehicle in vehicles:
-        vehicle_type = vehicle["vehicle_type"]
-        vehicle_factor = calc_config['vehicle_type_factors'].get(vehicle_type, 1.0)
-        vehicle_premium += base_premium * vehicle_factor
-    
-    # Calculate driver premium factors
-    driver_premium = 0.0
-    for driver in drivers:
-        driver_age = driver["age"]
-        driver_type = driver["driver_type"]
-        
-        # Get age factor
-        age_factor = _get_age_factor(driver_age, calc_config['driver_age_factors'])
-        
-        # Get driver type factor
-        type_factor = calc_config['driver_type_factors'].get(driver_type, 1.0)
-        
-        # Calculate driver contribution
-        driver_contribution = base_premium * age_factor * type_factor
-        driver_premium += driver_contribution
-    
-    # Average the vehicle and driver premiums
-    if vehicles and drivers:
-        avg_vehicle_premium = vehicle_premium / len(vehicles)
-        avg_driver_premium = driver_premium / len(drivers)
-        total_premium = (avg_vehicle_premium + avg_driver_premium) / 2
-    
-    # Apply multi-vehicle discount
-    num_vehicles = len(vehicles)
-    discount_rate = _get_multi_vehicle_discount(num_vehicles, calc_config['multi_vehicle_discounts'])
-    total_premium *= (1 - discount_rate)
-    
-    # Add some random variation
-    std_dev = CONFIG['policies']['premium']['standard_deviation']
-    variation = random.normalvariate(0, std_dev * 0.1)  # 10% of std dev for variation
-    total_premium += variation
+    # Calculate premium for each assignment
+    for assignment in assignments:
+        if assignment["exposure_factor"] > 0:  # Only count assigned drivers
+            # Base premium for this assignment
+            assignment_premium = base_premium * assignment["exposure_factor"]
+            
+            # Add some random variation
+            std_dev = CONFIG['policies']['premium']['standard_deviation']
+            variation = random.normalvariate(0, std_dev * 0.1)  # 10% of std dev for variation
+            assignment_premium += variation
+            
+            total_premium += assignment_premium
     
     return round(max(total_premium, 100.0), 2)  # Minimum premium of $100
-
-
-def _get_age_factor(age: int, age_factors: Dict[int, float]) -> float:
-    """Get age factor for premium calculation."""
-    # Find the closest age in the factors
-    if age in age_factors:
-        return age_factors[age]
-    
-    # Interpolate between closest ages
-    sorted_ages = sorted(age_factors.keys())
-    
-    if age < min(sorted_ages):
-        return age_factors[min(sorted_ages)]
-    elif age > max(sorted_ages):
-        return age_factors[max(sorted_ages)]
-    
-    # Find surrounding ages
-    for i in range(len(sorted_ages) - 1):
-        if sorted_ages[i] <= age <= sorted_ages[i + 1]:
-            lower_age, upper_age = sorted_ages[i], sorted_ages[i + 1]
-            lower_factor, upper_factor = age_factors[lower_age], age_factors[upper_age]
-            
-            # Linear interpolation
-            ratio = (age - lower_age) / (upper_age - lower_age)
-            interpolated_factor = lower_factor + ratio * (upper_factor - lower_factor)
-            return interpolated_factor
-    
-    return 1.0  # fallback
-
-
-def _get_multi_vehicle_discount(num_vehicles: int, discounts: Dict[int, float]) -> float:
-    """Get multi-vehicle discount rate."""
-    if num_vehicles in discounts:
-        return discounts[num_vehicles]
-    
-    # For 4+ vehicles, use the 4-vehicle discount
-    if num_vehicles >= 4:
-        return discounts.get(4, 0.0)
-    
-    return 0.0
 
 
 def _save_csv_file(data: List[Dict[str, Any]], filename: str) -> None:
@@ -398,3 +548,7 @@ def _save_csv_file(data: List[Dict[str, Any]], filename: str) -> None:
         writer.writerows(data)
     
     print(f"  Saved {len(data)} records to {filepath}")
+
+
+if __name__ == "__main__":
+    create_initial_state()

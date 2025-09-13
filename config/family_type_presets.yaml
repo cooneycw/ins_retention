@@ -1,0 +1,26 @@
+# Family Type Configuration Presets
+# Use these to quickly switch between different family compositions
+
+# Single Person Only (Simple)
+single_person_only:
+  single_person: 1.0
+  couple: 0.0
+  family_with_teens: 0.0
+
+# Mixed Families (Realistic)
+mixed_families:
+  single_person: 0.6
+  couple: 0.3
+  family_with_teens: 0.1
+
+# Couples Only
+couples_only:
+  single_person: 0.0
+  couple: 1.0
+  family_with_teens: 0.0
+
+# Families with Teens Only
+families_with_teens_only:
+  single_person: 0.0
+  couple: 0.0
+  family_with_teens: 1.0

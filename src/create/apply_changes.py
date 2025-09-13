@@ -215,7 +215,7 @@ def _apply_driver_changes(month: int, year: int, master_data: Dict[str, List[Dic
     changes = []
     current_date = f"{year}-{month:02d}-01"
     
-    # Driver additions (kids turning 16, new spouses)
+    # Driver additions (kids turning 16, new secondary drivers)
     addition_count = int(len(active_policies) * CHANGE_PROBABILITIES['driver_addition'])
     for _ in range(addition_count):
         if active_policies:
@@ -455,9 +455,9 @@ def _add_driver(policy: Dict[str, Any], master_data: Dict[str, List[Dict[str, An
         driver_type = "primary"
         age = random.randint(*CONFIG['drivers']['age_ranges']['primary'])
     elif len(policy_drivers) == 1:
-        # Second driver is usually spouse
-        driver_type = "spouse"
-        age = random.randint(*CONFIG['drivers']['age_ranges']['spouse'])
+        # Second driver is secondary
+        driver_type = "secondary"
+        age = random.randint(*CONFIG['drivers']['age_ranges']['secondary'])
     else:
         # Additional drivers are secondary (kids)
         driver_type = "secondary"
@@ -466,6 +466,7 @@ def _add_driver(policy: Dict[str, Any], master_data: Dict[str, List[Dict[str, An
     # Create new driver
     new_driver_no = _get_next_driver_number_for_policy(master_data, policy_no)
     new_license = _generate_ontario_license()
+    new_driver_name = _generate_driver_name()
     
     # Calculate birthday
     current_year = int(current_date[:4])
@@ -476,6 +477,7 @@ def _add_driver(policy: Dict[str, Any], master_data: Dict[str, List[Dict[str, An
         "driver_no": new_driver_no,
         "policy_no": policy_no,
         "license_no": new_license,
+        "driver_name": new_driver_name,
         "driver_type": driver_type,
         "age": age,
         "birthday": birthday,
@@ -510,7 +512,7 @@ def _remove_driver(policy: Dict[str, Any], master_data: Dict[str, List[Dict[str,
     if len(policy_drivers) <= 1:
         return None
     
-    # Prefer to remove secondary drivers (kids) over primary/spouse
+    # Prefer to remove secondary drivers (kids) over primary
     secondary_drivers = [d for d in policy_drivers if d["driver_type"] == "secondary"]
     if secondary_drivers:
         removed_driver = random.choice(secondary_drivers)
@@ -748,8 +750,8 @@ def _resequence_vehicles_and_drivers_on_renewal(policy_no: str, master_data: Dic
     policy_drivers = [d for d in master_data['drivers'] 
                      if d["policy_no"] == policy_no and d["status"] == "active"]
     
-    # Sort drivers by driver type (primary first, then spouse, then secondary)
-    driver_type_order = {"primary": 1, "spouse": 2, "secondary": 3}
+    # Sort drivers by driver type (primary first, then secondary)
+    driver_type_order = {"primary": 1, "secondary": 2}
     policy_drivers.sort(key=lambda x: (driver_type_order.get(x["driver_type"], 4), int(x["driver_no"])))
     
     for i, driver in enumerate(policy_drivers):
@@ -768,6 +770,15 @@ def _generate_vin() -> str:
             vin += random.choice(chars)
     
     return vin
+
+
+def _generate_driver_name() -> str:
+    """Generate a unique driver name."""
+    first_names = CONFIG['drivers']['name_generation']['first_names']
+    last_names = CONFIG['drivers']['name_generation']['last_names']
+    first_name = random.choice(first_names)
+    last_name = random.choice(last_names)
+    return f"{first_name} {last_name}"
 
 
 def _generate_ontario_license() -> str:
@@ -845,33 +856,20 @@ def _create_drivers_for_policy(policy: Dict[str, Any], master_data: Dict[str, Li
     family_type = policy["family_type"]
     policy_no = policy["policy_no"]
     
-    # Determine number of drivers based on family type
-    if family_type == "single_person_single_vehicle":
-        num_drivers = 1
-    elif family_type == "single_driver_multi_vehicle":
-        num_drivers = 1
-    elif family_type == "family_multi_vehicle":
-        num_drivers = random.randint(2, 4)
-    else:  # family_single_vehicle
-        num_drivers = random.randint(1, 2)
+    # Simplified: All policies have exactly 1 primary driver
+    num_drivers = 1
     
     # Create drivers
     for d in range(num_drivers):
         driver_no = _get_next_driver_number_for_policy(master_data, policy_no)
         license_no = _generate_ontario_license()
         
-        # Determine driver type and age
-        if d == 0:  # Primary driver
-            driver_type = "primary"
-            age = random.randint(*CONFIG['drivers']['age_ranges']['primary'])
-        elif family_type in ["family_multi_vehicle", "family_single_vehicle"] and d == 1:
-            # Spouse
-            driver_type = "spouse"
-            age = random.randint(*CONFIG['drivers']['age_ranges']['spouse'])
-        else:
-            # Secondary drivers (kids)
-            driver_type = "secondary"
-            age = random.randint(*CONFIG['drivers']['age_ranges']['secondary'])
+        # Generate unique driver name
+        driver_name = _generate_driver_name()
+        
+        # Simplified: Only primary drivers
+        driver_type = "primary"
+        age = random.randint(*CONFIG['drivers']['age_ranges']['primary'])
         
         # Calculate birthday
         current_year = int(policy["start_date"][:4])
@@ -882,6 +880,7 @@ def _create_drivers_for_policy(policy: Dict[str, Any], master_data: Dict[str, Li
             "driver_no": driver_no,
             "policy_no": policy_no,
             "license_no": license_no,
+            "driver_name": driver_name,
             "driver_type": driver_type,
             "age": age,
             "birthday": birthday,

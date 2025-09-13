@@ -6,55 +6,95 @@ globs: **/*.py, **/*.csv, **/*.md
 # Insurance Policy System - Project Rules
 
 ## System Overview
-This project simulates an insurance policy system with 1200 policies over 7 years (84 months) of data.
+This project simulates an insurance policy system with a family-centric approach using driver-vehicle assignments. The system creates ~1,200 inforce policies by end of 2018 and simulates 7+ years of data with realistic family compositions and driver assignment rules.
+
+### Current Status (Latest Updates)
+- ✅ **Policy numbering is sequential by creation date** - earliest policies (January 2018) have lowest policy numbers
+- ✅ **Inforce represents end-of-month status** - policies appear from their start date onwards  
+- ✅ **Historical assignment tracking** - proper handling of vehicle substitutions and coverage gaps
+- ✅ **Family-centric data architecture** - families drive policy composition and driver assignments
+- ✅ **Configurable family types** - easy switching between single person, couples, and families with teens
+- ✅ **Realistic vehicle change rates** - scaled back additions to maintain realistic multi-vehicle percentages
+
+## Environment Requirements
+- **Conda Environment**: Always use the `retention` conda environment
+- **Activation**: Run `conda activate retention` before executing any Python scripts
+- **Dependencies**: All Python packages should be installed in the retention environment, not globally
 
 ## Data Architecture
 
 ### Core Data Files (Internal)
-- `policies_master.csv` - Policy master data
-- `vehicles_master.csv` - Vehicle master data with VINs and effective dates
-- `drivers_master.csv` - Driver master data with license numbers and birthdays
+- `families_master.csv` - Family composition and rules data
+- `policies_master.csv` - Policy master data (references families)
+- `vehicles_master.csv` - Vehicle master data with VINs and effective dates (references families)
+- `drivers_master.csv` - Driver master data with license numbers and birthdays (references families)
+- `driver_vehicle_assignments.csv` - Driver-vehicle assignments with exposure factors
 - `policy_changes_log.csv` - Transaction log of all changes
 
-### Output File (Final Product)
-- `inforce_monthly_view.csv` - 84-month snapshot with inforce_yy, inforce_mm fields
+### Output Files (Final Products)
+- `inforce_monthly_view.csv` - Monthly snapshot with driver-vehicle assignment records (end-of-month status)
+- `monthly_distribution_summary.csv` - Monthly statistics and distributions analysis
+
+## Family-Centric System Architecture
+
+### Family Types (Configurable)
+- **Single Person**: 1 adult, 0 teens, 1+ vehicles
+- **Couple**: 2 adults, 0 teens, 1-2 vehicles  
+- **Family with Teens**: 2 adults, 1-2 teens, 1-3 vehicles
+
+### Driver Assignment Rules
+- **Every vehicle must have exactly 1 primary driver** (required)
+- **Each vehicle can have up to 1 secondary adult + 1 teen** (optional)
+- **Maximum: 3 drivers per vehicle** (1 primary + 1 secondary adult + 1 teen)
+- **All drivers must be assigned to at least 1 vehicle**
+- **No unassigned drivers or vehicles**
+
+### Exposure Allocation
+- **Primary solo**: 1.0 exposure
+- **Primary shared**: 0.6 exposure (when secondary present)
+- **Secondary adult**: 0.5 exposure
+- **Teen secondary**: 0.35 exposure
+- **Teen primary**: 1.0 exposure
+- **Unassigned driver**: 0.0 exposure
 
 ## Data Requirements
 
+### Family Data
+- Family IDs: 'FAM000001' format (6 digits), incrementing
+- Family types: Configurable via YAML (single_person, couple, family_with_teens)
+- Family evolution rules: Configurable per family type (can_add_adults, can_add_teens, etc.)
+- Vehicle change rules: Configurable per family type (can_add_vehicles, max_vehicles, etc.)
+
 ### Policy Data
 - Policy numbers: '00000001' format (8 digits), incrementing, same number on renewal
-- Starting with 1200 policies, natural drift based on market forces
+- Starting with ~1,200 inforce policies by end of 2018
 - Annual renewals with varying expiry dates (uniformly distributed)
-- Sophisticated premium calculation system:
-  * Base premium: $1500 for 35-year-old, single vehicle
-  * Driver age factors: Young drivers (16-24) pay more, prime age (25-64) pay less, seniors (65+) pay more
-  * Driver type factors: Primary (100%), Spouse (80%), Secondary (50% - less usage)
-  * Vehicle type factors: Sedan (100%), Sports Car (150%), Truck (115%), etc.
-  * Multi-vehicle discounts: 2 vehicles (10%), 3 vehicles (15%), 4+ vehicles (20%)
-- Premium updates only at renewal (5% annual inflation)
+- Premium calculation based on driver-vehicle assignments and exposure factors
 - Policy cancellations: families move to new insurers (permanent cancellation)
 - New policy additions: families switch from other insurers to our company
-- Net policy flow: roughly equivalent additions/cancellations with natural variability
 
 ### Vehicle Data
-- Vehicle numbers: '01' format, incrementing
+- Vehicle numbers: '01' format, per-family indexing
 - 17-character unique VINs
 - Model years: 2001-2018 for initial vehicles (17-year max age)
 - Vehicle type complexity: 10 different vehicle types
-- Realistic family composition with weighted distribution:
-  * 2-vehicle families: 50% of multi-vehicle policies
-  * 3-vehicle families: 35% of multi-vehicle policies  
-  * 4-vehicle families: 15% of multi-vehicle policies
-- Vehicle replacements mid-year (accidents, upgrades)
-- Vehicles can be dropped permanently or temporarily
+- Vehicle changes: additions, removals, substitutions (configurable per family type)
 
 ### Driver Data
+- Driver numbers: '01' format, per-family indexing
 - Ontario-style driver license numbers (4 letters, 3 numbers, 2 letters)
-- Driver types: primary, spouse, secondary
-- Realistic family structures with 2-4 drivers per policy
-- Driver additions: kids turning 16
-- Driver removals: kids turning 25, spouse changes (divorce, vehicle removal)
+- Driver types: adult, teen (simplified from primary/spouse/secondary)
+- Driver names: Random unique names from configurable lists
+- Driver additions: kids turning 16, new family members
+- Driver removals: kids turning 25, family changes
 - Track birthdays for age-based changes and aging calculations
+
+### Driver-Vehicle Assignment Data
+- Assignment IDs: 'ASS00000001' format (8 digits), incrementing
+- Assignment types: primary, secondary_adult, secondary_teen, unassigned
+- Exposure factors: Based on assignment type and sharing rules
+- Effective dates: When assignments become active
+- Status tracking: active, inactive, etc.
 
 ### Inforce View Structure
 Required fields:
@@ -66,6 +106,9 @@ Required fields:
 - `vehicle_vin` - Vehicle VIN
 - `driver_no` - Driver number
 - `driver_license_no` - Driver license number
+- `driver_name` - Driver name
+- `assignment_type` - Driver-vehicle assignment type
+- `exposure_factor` - Exposure allocation factor
 - `premium_paid` - Premium amount
 
 **Sorting Requirements:**
@@ -73,9 +116,33 @@ The inforce view must be sorted by: policy, policy_expiry_date, vehicle_no, driv
 
 ## Python Routines Required
 
-1. **`build_initial_state()`** - Creates original 1200 policies with initial vehicles/drivers
-2. **`apply_monthly_changes()`** - Simulates monthly changes (vehicles, drivers, renewals, cancellations, new policies)
-3. **`generate_inforce_view()`** - Builds final 84-month inforce CSV
+1. **`build_initial_state()`** - Creates families with initial vehicles/drivers and assignments
+2. **`apply_monthly_changes()`** - Simulates monthly changes respecting family type rules
+3. **`generate_inforce_view()`** - Builds final monthly inforce CSV from assignments
+4. **`distribution_analysis()`** - Analyzes inforce distributions and generates reports
+
+## Family Type Configuration
+
+### Configuration Management
+- **YAML-based configuration**: All family types and rules in `config/policy_system_config.yaml`
+- **Preset system**: Quick switching between family type combinations
+- **Maintenance utilities**: `src/maintain/family_type_manager.py` for configuration management
+
+### Available Presets
+- **Single person only**: All families are single person (simple mode)
+- **Mixed families**: Realistic mix of single person, couples, families with teens
+- **Couples only**: All families are couples
+- **Families with teens only**: All families have teens
+
+### Family Evolution Rules (Per Family Type)
+- `can_add_adults`: Whether families can add adults (marriage, coupling)
+- `can_add_teens`: Whether families can add teens (kids turning 16)
+- `can_remove_adults`: Whether families can remove adults (divorce, separation)
+- `can_remove_teens`: Whether families can remove teens (aging out, moving out)
+- `can_add_vehicles`: Whether families can add vehicles
+- `can_remove_vehicles`: Whether families can remove vehicles
+- `can_substitute_vehicles`: Whether families can substitute vehicles
+- `max_vehicles`: Maximum vehicles allowed for this family type
 
 ## Policy Lifecycle Management
 
@@ -91,22 +158,30 @@ The inforce view must be sorted by: policy, policy_expiry_date, vehicle_no, driv
 - Policy numbering: continues incrementing from highest existing policy number
 
 ### Net Policy Flow
-- Starting point: 1200 policies
+- Starting point: ~1,200 inforce policies by end of 2018
 - Natural drift: policy count will fluctuate based on market forces
 - Variability: some months have net gains, others net losses
 - No artificial constraints: let the data tell the story of market dynamics
 
 ## Data Quality Standards
 - All changes must be inferable from inforce view (no explicit change tracking in output)
-- Realistic family compositions and relationships
-- Consistent change patterns throughout the 7-year period
+- Realistic family compositions and driver-vehicle assignments
+- Consistent change patterns throughout the 7+ year period
 - Proper date handling and policy lifecycle management
+- Driver-vehicle assignments follow insurance industry standards
 
 ## File Organization
 - All data files in `data/policy_system/` directory
 - Python modules in `src/create/` directory
+- Maintenance utilities in `src/maintain/` directory
 - Inforce data in `data/inforce/` directory
 - Output files in `output/` directory
+- Configuration files in `config/` directory
+
+## Configuration Management
+- **Main config**: `config/policy_system_config.yaml` - Main system configuration
+- **Presets**: `config/family_type_presets.yaml` - Family type preset configurations
+- **Manager**: `src/maintain/family_type_manager.py` - Configuration management utilities
 
 ## Output File Management
 - **Fixed naming convention**: Use consistent, descriptive names for all output files
@@ -114,6 +189,31 @@ The inforce view must be sorted by: policy, policy_expiry_date, vehicle_no, driv
 - **Reusable reports**: Use the same file names for iterative analysis to avoid clutter
 - **Clean output directory**: Remove temporary or test files after validation
 - **Standard report names**:
-  - `retention_analysis.csv` - Main retention analysis
-  - `inforce_summary.csv` - Inforce counts by month
-  - `cohort_analysis.csv` - Cohort-based retention analysis
+  - `monthly_distribution_summary.csv` - Monthly inforce statistics and distributions
+  - `inforce_monthly_view.csv` - Complete monthly inforce data
+
+## Usage Examples
+
+### Switching Family Types
+```bash
+# Show current configuration
+python -m src.maintain.family_type_manager
+
+# Switch to single person only
+python -m src.maintain.family_type_manager single_person_only
+
+# Switch to mixed families
+python -m src.maintain.family_type_manager mixed_families
+```
+
+### Running the System
+```bash
+# Activate environment
+conda activate retention
+
+# Run complete system
+python main.py
+
+# Run individual steps
+python -c "from src.create.build_initial_state import create_initial_state; create_initial_state()"
+```

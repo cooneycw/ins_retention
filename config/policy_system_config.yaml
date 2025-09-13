@@ -1,29 +1,18 @@
-# Insurance Policy System Configuration
-# Core assumptions and parameters for the policy system simulation
-
-# Date Range Configuration
 date_range:
-  start_date: "2018-01-01"
-  end_date: "2025-06-30"
+  start_date: '2018-01-01'
+  end_date: '2025-06-30'
   total_months: 90
-
-# Policy Configuration
 policies:
   initial_count: 1200
-  number_format: "8_digit"  # 00000001, 00000002, etc.
+  number_format: 8_digit
   premium:
-    base_amount: 1500.00  # Base premium for 35-year-old, single vehicle
-    standard_deviation: 200.00
-    annual_inflation_rate: 0.05  # 5%
-    
-    # Premium calculation factors
+    base_amount: 1500.0
+    standard_deviation: 200.0
+    annual_inflation_rate: 0.05
     calculation:
-      base_age: 35  # Age for base premium calculation
-      base_vehicles: 1  # Number of vehicles for base premium
-      
-      # Driver age factors (multipliers)
+      base_age: 35
+      base_vehicles: 1
       driver_age_factors:
-        # Young drivers (16-24): higher risk
         16: 2.5
         17: 2.3
         18: 2.1
@@ -33,169 +22,279 @@ policies:
         22: 1.3
         23: 1.2
         24: 1.1
-        
-        # Prime age (25-64): lower risk, decreasing until 65
         25: 1.0
         30: 0.95
-        35: 0.90  # Base age
+        35: 0.9
         40: 0.85
-        45: 0.80
+        45: 0.8
         50: 0.75
-        55: 0.70
+        55: 0.7
         60: 0.65
-        64: 0.60
-        
-        # Senior drivers (65+): increasing risk
+        64: 0.6
         65: 0.65
         70: 0.75
         75: 0.85
         80: 1.0
         85: 1.2
-      
-      # Driver type factors
       driver_type_factors:
-        primary: 1.0      # Full premium
-        spouse: 0.8       # 20% discount
-        secondary: 0.5    # 50% discount (less usage)
-      
-      # Vehicle type factors
+        primary: 1.0
+        secondary: 0.5
       vehicle_type_factors:
-        "Sedan": 1.0
-        "Hatchback": 0.95
-        "Wagon": 0.95
-        "Crossover": 1.05
-        "SUV": 1.1
-        "Truck": 1.15
-        "Minivan": 1.05
-        "Coupe": 1.2
-        "Convertible": 1.3
-        "Sports Car": 1.5
-      
-      # Multi-vehicle discounts
+        Sedan: 1.0
+        Hatchback: 0.95
+        Wagon: 0.95
+        Crossover: 1.05
+        SUV: 1.1
+        Truck: 1.15
+        Minivan: 1.05
+        Coupe: 1.2
+        Convertible: 1.3
+        Sports Car: 1.5
       multi_vehicle_discounts:
-        1: 0.0    # No discount for single vehicle
-        2: 0.1    # 10% discount for 2 vehicles
-        3: 0.15   # 15% discount for 3 vehicles
-        4: 0.2    # 20% discount for 4+ vehicles
-  
-# Family Composition Distribution
+        1: 0.0
+        2: 0.1
+        3: 0.15
+        4: 0.2
 family_types:
-  single_person_single_vehicle:
-    percentage: 0.25
+  single_person:
+    percentage: 1.0
+    adults: 1
+    teens: 0
     vehicles: 1
-    drivers: 1
-  single_driver_multi_vehicle:
-    percentage: 0.05
-    vehicles: [2, 3]
-    drivers: 1
-  family_multi_vehicle:
-    percentage: 0.50
-    vehicles: [2, 3, 4]
-    vehicle_weights: [0.50, 0.35, 0.15]  # 2, 3, 4 vehicles respectively
-    drivers: [2, 3, 4]
-  family_single_vehicle:
-    percentage: 0.20
-    vehicles: 1
-    drivers: [1, 2]
-
-# Vehicle Configuration
+    can_add_adults: false
+    can_add_teens: false
+    can_remove_adults: false
+    can_remove_teens: false
+    can_add_vehicles: true
+    can_remove_vehicles: true
+    can_substitute_vehicles: true
+    max_vehicles: 3
+  couple:
+    percentage: 0.0
+    adults: 2
+    teens: 0
+    vehicles:
+    - 1
+    - 2
+    vehicle_weights:
+    - 0.7
+    - 0.3
+    can_add_adults: false
+    can_add_teens: true
+    can_remove_adults: true
+    can_remove_teens: false
+    can_add_vehicles: true
+    can_remove_vehicles: true
+    can_substitute_vehicles: true
+    max_vehicles: 4
+  family_with_teens:
+    percentage: 0.0
+    adults: 2
+    teens:
+    - 1
+    - 2
+    teen_weights:
+    - 0.8
+    - 0.2
+    vehicles:
+    - 1
+    - 2
+    - 3
+    vehicle_weights:
+    - 0.5
+    - 0.3
+    - 0.2
+    can_add_adults: false
+    can_add_teens: false
+    can_remove_adults: true
+    can_remove_teens: true
+    can_add_vehicles: true
+    can_remove_vehicles: true
+    can_substitute_vehicles: true
+    max_vehicles: 5
+driver_assignment:
+  max_drivers_per_vehicle: 3
+  exposure_allocations:
+    primary_solo: 1.0
+    primary_shared: 0.6
+    secondary_adult: 0.5
+    teen_secondary: 0.35
+    teen_primary: 1.0
 vehicles:
   types:
-    - "Sedan"
-    - "SUV"
-    - "Truck"
-    - "Hatchback"
-    - "Coupe"
-    - "Convertible"
-    - "Wagon"
-    - "Crossover"
-    - "Minivan"
-    - "Sports Car"
+  - Sedan
+  - SUV
+  - Truck
+  - Hatchback
+  - Coupe
+  - Convertible
+  - Wagon
+  - Crossover
+  - Minivan
+  - Sports Car
   model_year_range:
-    earliest: 2001  # 17 years before 2018
+    earliest: 2001
     latest: 2018
     max_age: 17
-  number_format: "2_digit"  # 01, 02, 03, etc.
+  number_format: 2_digit
   vin_length: 17
-
-# Driver Configuration
 drivers:
   types:
-    - "primary"
-    - "spouse"
-    - "secondary"
+  - primary
+  - secondary
   age_ranges:
-    primary: [25, 65]
-    spouse: [25, 60]
-    secondary: [16, 25]
-  license_format: "ontario"  # 4 letters, 3 numbers, 2 letters
-  number_format: "2_digit"  # 01, 02, 03, etc.
-
-# Policy Lifecycle Configuration
+    primary:
+    - 25
+    - 65
+    secondary:
+    - 16
+    - 25
+  license_format: ontario
+  number_format: 2_digit
+  name_generation:
+    first_names:
+    - John
+    - Jane
+    - Michael
+    - Sarah
+    - David
+    - Lisa
+    - Robert
+    - Jennifer
+    - William
+    - Jessica
+    - James
+    - Ashley
+    - Christopher
+    - Amanda
+    - Daniel
+    - Stephanie
+    - Matthew
+    - Nicole
+    - Anthony
+    - Elizabeth
+    - Mark
+    - Helen
+    - Donald
+    - Deborah
+    - Steven
+    - Dorothy
+    - Paul
+    - Betty
+    - Andrew
+    - Sandra
+    last_names:
+    - Smith
+    - Johnson
+    - Williams
+    - Brown
+    - Jones
+    - Garcia
+    - Miller
+    - Davis
+    - Rodriguez
+    - Martinez
+    - Hernandez
+    - Lopez
+    - Gonzalez
+    - Wilson
+    - Anderson
+    - Thomas
+    - Taylor
+    - Moore
+    - Jackson
+    - Martin
+    - Lee
+    - Perez
+    - Thompson
+    - White
+    - Harris
+    - Sanchez
+    - Clark
+    - Ramirez
+    - Lewis
+    - Robinson
 lifecycle:
   renewals:
-    frequency: "annual"
-    premium_update_timing: "renewal_only"
-  
+    frequency: annual
+    premium_update_timing: renewal_only
   cancellations:
     reasons:
-      - "better_rates_elsewhere"
-      - "service_issues"
-      - "relocation"
-      - "dissatisfaction"
-    timing: "any_point_in_year"
-  
+    - better_rates_elsewhere
+    - service_issues
+    - relocation
+    - dissatisfaction
+    timing: any_point_in_year
   new_policies:
     reasons:
-      - "better_rates"
-      - "better_service"
-      - "referrals"
-      - "competitor_switching"
-    timing: "any_point_in_year"
-
-# Change Simulation Parameters
+    - better_rates
+    - better_service
+    - referrals
+    - competitor_switching
+    timing: any_point_in_year
 changes:
-  vehicle_replacements:
-    frequency: "monthly"
-    reasons:
-      - "accident"
-      - "upgrade"
-      - "maintenance_issues"
-  
-  driver_changes:
+  vehicle_changes:
     additions:
-      - "kids_turning_16"
-      - "new_spouse"
+      probability: 0.0009
+      reasons:
+      - new_purchase
+      - upgrade
     removals:
-      - "kids_turning_25"
-      - "divorce"
-      - "vehicle_removal"
-  
+      probability: 0.005
+      reasons:
+      - sale
+      - accident_total_loss
+      - theft
+    substitutions:
+      probability: 0.02
+      reasons:
+      - accident
+      - upgrade
+      - maintenance_issues
+      coverage_gap_probability: 0.15
+      tenure_reset_on_gap: true
+  family_evolution:
+    adult_additions:
+      probability: 0.001
+      reasons:
+      - marriage
+      - partnership
+    adult_removals:
+      probability: 0.002
+      reasons:
+      - divorce
+      - separation
+      - death
+    teen_additions:
+      probability: 0.005
+      reasons:
+      - child_turns_16
+    teen_removals:
+      probability: 0.003
+      reasons:
+      - teen_turns_25
+      - moves_out
   aging:
     drivers_age_with_renewals: true
     vehicles_age_continuously: true
-
-# File Paths Configuration
 file_paths:
   data:
-    policy_system: "data/policy_system"
-    inforce: "data/inforce"
-  output: "output"
-  config: "config"
-
-# Data Files
+    policy_system: data/policy_system
+    inforce: data/inforce
+  output: output
+  config: config
 data_files:
   master:
-    policies: "policies_master.csv"
-    vehicles: "vehicles_master.csv"
-    drivers: "drivers_master.csv"
-    changes_log: "policy_changes_log.csv"
+    families: families_master.csv
+    policies: policies_master.csv
+    vehicles: vehicles_master.csv
+    drivers: drivers_master.csv
+    driver_vehicle_assignments: driver_vehicle_assignments.csv
+    changes_log: policy_changes_log.csv
   inforce:
-    monthly_view: "inforce_monthly_view.csv"
+    monthly_view: inforce_monthly_view.csv
   output:
-    reports: "policy_system_reports"
-
-# Data Quality Settings
+    reports: policy_system_reports
 data_quality:
   validate_relationships: true
   ensure_unique_identifiers: true

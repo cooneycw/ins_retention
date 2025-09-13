@@ -139,6 +139,7 @@ def _process_monthly_snapshots(master_data: Dict[str, List[Dict[str, Any]]]) -> 
                         "model_year": vehicle["model_year"],
                         "driver_no": driver["driver_no"],
                         "driver_license_no": driver["license_no"],
+                        "driver_name": driver["driver_name"],
                         "driver_type": driver["driver_type"],
                         "driver_age": driver["age"],
                         "premium_paid": policy["premium_paid"]

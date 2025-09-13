@@ -29,6 +29,7 @@ def main() -> None:
         ("Build Initial State", build_initial_state),
         ("Apply Monthly Changes", apply_monthly_changes),
         ("Generate Inforce View", generate_inforce_view),
+        ("Distribution Analysis", distribution_analysis),
     ]
     
     for step_name, step_function in steps:
@@ -46,19 +47,25 @@ def main() -> None:
     print("Check 'inforce_monthly_view.csv' for the final output.")
 
 def build_initial_state() -> None:
-    """Step 1: Create initial 1200 policies with vehicles and drivers."""
-    from src.create.build_initial_state import create_initial_policies
-    create_initial_policies()
+    """Step 1: Create initial families with driver-vehicle assignments."""
+    from src.create.build_initial_state import create_initial_state
+    create_initial_state()
 
 def apply_monthly_changes() -> None:
-    """Step 2: Apply monthly changes over 84 months."""
-    from src.create.apply_changes import simulate_monthly_changes
+    """Step 2: Apply monthly changes over 90 months with actual vehicle changes."""
+    from src.create.apply_changes_proper import simulate_monthly_changes
     simulate_monthly_changes()
 
 def generate_inforce_view() -> None:
-    """Step 3: Generate the final inforce monthly view."""
-    from src.create.generate_inforce import create_inforce_view
+    """Step 3: Generate the final inforce monthly view (minimal version)."""
+    from src.create.generate_inforce_minimal import create_inforce_view
     create_inforce_view()
+
+def distribution_analysis() -> None:
+    """Step 4: Perform distribution analysis and generate reports."""
+    from src.report.distribution_analysis import analyze_inforce_distributions, generate_distribution_report
+    analyze_inforce_distributions()
+    generate_distribution_report()
 
 if __name__ == "__main__":
     main()
