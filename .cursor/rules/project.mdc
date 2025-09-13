@@ -1,0 +1,93 @@
+---
+description: Insurance Policy System - Project-specific rules and requirements
+globs: **/*.py, **/*.csv, **/*.md
+---
+
+# Insurance Policy System - Project Rules
+
+## System Overview
+This project simulates an insurance policy system with 1200 policies over 7 years (84 months) of data.
+
+## Data Architecture
+
+### Core Data Files (Internal)
+- `policies_master.csv` - Policy master data
+- `vehicles_master.csv` - Vehicle master data with VINs and effective dates
+- `drivers_master.csv` - Driver master data with license numbers and birthdays
+- `policy_changes_log.csv` - Transaction log of all changes
+
+### Output File (Final Product)
+- `inforce_monthly_view.csv` - 84-month snapshot with inforce_yy, inforce_mm fields
+
+## Data Requirements
+
+### Policy Data
+- Policy numbers: '00000001' format (8 digits), incrementing, same number on renewal
+- Starting with 1200 policies, natural drift based on market forces
+- Annual renewals with varying expiry dates (uniformly distributed)
+- Premium updates only at renewal (average $1500, 5% annual inflation)
+- Policy cancellations: families move to new insurers (permanent cancellation)
+- New policy additions: families switch from other insurers to our company
+- Net policy flow: roughly equivalent additions/cancellations with natural variability
+
+### Vehicle Data
+- Vehicle numbers: '01' format, incrementing
+- 17-character unique VINs
+- Realistic family composition (single vs multi-vehicle policies)
+- Vehicle replacements mid-year (accidents, upgrades)
+- Vehicles can be dropped permanently or temporarily
+
+### Driver Data
+- Ontario-style driver license numbers
+- Realistic family structures
+- Driver additions: kids turning 16
+- Driver removals: kids turning 25, spouse changes (divorce, vehicle removal)
+- Track birthdays for age-based changes
+
+### Inforce View Structure
+Required fields:
+- `inforce_yy` - Year (4 digits)
+- `inforce_mm` - Month (1-12)
+- `policy` - Policy number
+- `policy_expiry_date` - Policy expiry date
+- `vehicle_no` - Vehicle number
+- `vehicle_vin` - Vehicle VIN
+- `driver_no` - Driver number
+- `driver_license_no` - Driver license number
+- `premium_paid` - Premium amount
+
+## Python Routines Required
+
+1. **`build_initial_state()`** - Creates original 1200 policies with initial vehicles/drivers
+2. **`apply_monthly_changes()`** - Simulates monthly changes (vehicles, drivers, renewals, cancellations, new policies)
+3. **`generate_inforce_view()`** - Builds final 84-month inforce CSV
+
+## Policy Lifecycle Management
+
+### Policy Cancellations
+- Permanent cancellations when families move to new insurers
+- Cancellation reasons: better rates elsewhere, service issues, relocation
+- Cancellation timing: can occur at any point in policy year
+
+### New Policy Additions
+- New policies from families switching from competitors
+- Addition reasons: better rates, better service, referrals
+- New policy timing: can start at any point in the year
+- Policy numbering: continues incrementing from highest existing policy number
+
+### Net Policy Flow
+- Starting point: 1200 policies
+- Natural drift: policy count will fluctuate based on market forces
+- Variability: some months have net gains, others net losses
+- No artificial constraints: let the data tell the story of market dynamics
+
+## Data Quality Standards
+- All changes must be inferable from inforce view (no explicit change tracking in output)
+- Realistic family compositions and relationships
+- Consistent change patterns throughout the 7-year period
+- Proper date handling and policy lifecycle management
+
+## File Organization
+- All data files in `src/create/data/` directory
+- Python modules in `src/create/` directory
+- Output files in project root or designated output directory

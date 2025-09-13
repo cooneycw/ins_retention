@@ -1,0 +1,78 @@
+---
+description: Core Python development standards and best practices
+globs: **/*.py, **/*.pyx, **/*.pyi
+---
+
+# Python Development Standards
+
+## Code Style & Formatting
+- Follow PEP 8 style guidelines strictly
+- Use Black for code formatting with 88-character line length
+- Use Ruff for linting and import sorting
+- Prefer snake_case for variables and functions, PascalCase for classes
+- Use descriptive variable names, avoid single-letter variables except for loops
+
+## Type Hints & Documentation
+- Always use type hints for function parameters and return values
+- Use `from __future__ import annotations` for forward references
+- Document all public functions and classes with docstrings (Google or NumPy style)
+- Use `typing` module imports: `List`, `Dict`, `Optional`, `Union`, etc.
+- For Python 3.9+, prefer built-in types: `list[str]` instead of `List[str]`
+
+## Error Handling & Validation
+- Handle errors early with guard clauses to avoid deeply nested conditionals
+- Use specific exception types, avoid bare `except:` clauses
+- Prefer `raise` over `return None` for error conditions
+- Use custom exception classes for domain-specific errors
+- Validate inputs at function boundaries using Pydantic or built-in assertions
+
+## Data Structures & Classes
+- Prefer dataclasses or Pydantic models for structured data
+- Use `@dataclass(frozen=True)` for immutable data structures
+- Implement `__str__` and `__repr__` methods for custom classes
+- Use properties for computed attributes and validation
+- Follow composition over inheritance principle
+
+## Resource Management
+- Always use context managers (`with` statements) for file operations
+- Use `pathlib.Path` instead of `os.path` for file system operations
+- Close resources explicitly or use context managers
+- Use `try/finally` blocks when context managers aren't available
+
+## Performance & Efficiency
+- Use list comprehensions and generator expressions when appropriate
+- Prefer `enumerate()` over manual indexing
+- Use `collections` module for specialized data structures
+- Profile code before optimizing, avoid premature optimization
+- Use `functools.lru_cache` for expensive, pure functions
+
+## Security & Best Practices
+- Validate all external inputs
+- Use secrets module for cryptographic operations
+- Avoid `eval()` and `exec()` functions
+- Use environment variables for configuration, never hardcode secrets
+- Sanitize data before database operations
+
+## Import Organization
+- Group imports: standard library, third-party, local imports
+- Use absolute imports over relative imports
+- Import only what you need, avoid `import *`
+- Put imports at the top of the file after module docstring
+
+## Functions & Methods
+- Keep functions small and focused on single responsibility
+- Use pure functions when possible (no side effects)
+- Return early to reduce nesting
+- Use keyword arguments for functions with multiple parameters
+- Limit function parameters to 5 or fewer when possible
+
+## Constants & Configuration
+- Define constants in UPPER_CASE at module level
+- Use enums for related constants
+- Create configuration classes or use libraries like `pydantic-settings`
+- Avoid magic numbers and strings, use named constants
+---
+description:
+globs:
+alwaysApply: true
+---
