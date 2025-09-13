@@ -71,6 +71,12 @@ globs: **/*.py, **/*.pyx, **/*.pyi
 - Use enums for related constants
 - Create configuration classes or use libraries like `pydantic-settings`
 - Avoid magic numbers and strings, use named constants
+
+## Documentation Maintenance
+- Update .cursor/rules files when project requirements change
+- Update readme.md when project structure or functionality changes
+- Keep documentation synchronized with code implementation
+- Document all new features and requirements in project.mdc
 ---
 description:
 globs:

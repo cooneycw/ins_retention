@@ -71,13 +71,78 @@ Retention/
 
 ## System Output
 
-The system generates a final CSV file `inforce_monthly_view.csv` with 84 months of data containing:
-- Policy information with expiry dates
-- Vehicle data with VINs
-- Driver data with license numbers
+The system generates a final CSV file `inforce_monthly_view.csv` with 90 months of data (Jan 2018 - Jun 2025) containing:
+- Policy information with expiry dates and client tenure tracking
+- Vehicle data with VINs, types, and model years (2001-2018 range)
+- Driver data with license numbers and driver types (primary/spouse/secondary)
+- Sophisticated premium calculations based on:
+  * Driver age and type (young drivers pay more, secondary drivers pay less)
+  * Vehicle type (sports cars cost more, sedans are base rate)
+  * Multi-vehicle discounts (up to 20% for 4+ vehicles)
 - Premium amounts with annual inflation
-- Monthly inforce status tracking
+- Monthly inforce status tracking (last day of each month)
+- **Sorted by**: policy, policy_expiry_date, vehicle_no, driver_no, inforce_yy, inforce_mm
+
+## Data Features
+
+### Family Composition
+- Single person, single vehicle: 25%
+- Single driver, multi-vehicle: 5%
+- Family with 2+ vehicles: 50% (weighted: 2-car 50%, 3-car 35%, 4-car 15%)
+- Family with single vehicle: 20%
+
+### Vehicle Management
+- 10 vehicle types with realistic distribution
+- Model year tracking for aging (17-year maximum age)
+- VIN generation with proper format
+
+### Driver Management
+- Driver type classification (primary, spouse, secondary)
+- Age-appropriate driver assignment
+- Birthday tracking for aging calculations
 
 ## Dependencies
 
-*[Add your project dependencies here as they are installed]*
+### Required Python Packages
+- **PyYAML**: For configuration file management
+- **Standard Library**: csv, random, datetime, pathlib, typing
+
+### Installation
+```bash
+# Activate conda environment
+conda activate retention
+
+# Install required packages
+pip install PyYAML
+```
+
+## Project Structure
+
+```
+Retention/
+├── config/
+│   └── policy_system_config.yaml    # Core assumptions and parameters
+├── data/
+│   ├── policy_system/               # Master data files
+│   │   ├── policies_master.csv
+│   │   ├── vehicles_master.csv
+│   │   ├── drivers_master.csv
+│   │   └── policy_changes_log.csv
+│   └── inforce/                     # Monthly inforce data
+│       └── inforce_monthly_view.csv
+├── output/                          # Reports and analysis (fixed naming)
+├── src/create/                      # Source code modules
+└── main.py                          # Main orchestrator
+
+## Output File Management
+
+- **Fixed naming convention**: Use consistent, descriptive names for all output files
+- **No temporary files**: All generated files should have permanent, meaningful names
+- **Reusable reports**: Use the same file names for iterative analysis to avoid clutter
+- **Clean output directory**: Remove temporary or test files after validation
+
+### Standard Report Names
+- `retention_analysis.csv` - Main retention analysis
+- `inforce_summary.csv` - Inforce counts by month
+- `cohort_analysis.csv` - Cohort-based retention analysis
+```

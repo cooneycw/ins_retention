@@ -25,7 +25,13 @@ This project simulates an insurance policy system with 1200 policies over 7 year
 - Policy numbers: '00000001' format (8 digits), incrementing, same number on renewal
 - Starting with 1200 policies, natural drift based on market forces
 - Annual renewals with varying expiry dates (uniformly distributed)
-- Premium updates only at renewal (average $1500, 5% annual inflation)
+- Sophisticated premium calculation system:
+  * Base premium: $1500 for 35-year-old, single vehicle
+  * Driver age factors: Young drivers (16-24) pay more, prime age (25-64) pay less, seniors (65+) pay more
+  * Driver type factors: Primary (100%), Spouse (80%), Secondary (50% - less usage)
+  * Vehicle type factors: Sedan (100%), Sports Car (150%), Truck (115%), etc.
+  * Multi-vehicle discounts: 2 vehicles (10%), 3 vehicles (15%), 4+ vehicles (20%)
+- Premium updates only at renewal (5% annual inflation)
 - Policy cancellations: families move to new insurers (permanent cancellation)
 - New policy additions: families switch from other insurers to our company
 - Net policy flow: roughly equivalent additions/cancellations with natural variability
@@ -33,16 +39,22 @@ This project simulates an insurance policy system with 1200 policies over 7 year
 ### Vehicle Data
 - Vehicle numbers: '01' format, incrementing
 - 17-character unique VINs
-- Realistic family composition (single vs multi-vehicle policies)
+- Model years: 2001-2018 for initial vehicles (17-year max age)
+- Vehicle type complexity: 10 different vehicle types
+- Realistic family composition with weighted distribution:
+  * 2-vehicle families: 50% of multi-vehicle policies
+  * 3-vehicle families: 35% of multi-vehicle policies  
+  * 4-vehicle families: 15% of multi-vehicle policies
 - Vehicle replacements mid-year (accidents, upgrades)
 - Vehicles can be dropped permanently or temporarily
 
 ### Driver Data
-- Ontario-style driver license numbers
-- Realistic family structures
+- Ontario-style driver license numbers (4 letters, 3 numbers, 2 letters)
+- Driver types: primary, spouse, secondary
+- Realistic family structures with 2-4 drivers per policy
 - Driver additions: kids turning 16
 - Driver removals: kids turning 25, spouse changes (divorce, vehicle removal)
-- Track birthdays for age-based changes
+- Track birthdays for age-based changes and aging calculations
 
 ### Inforce View Structure
 Required fields:
@@ -55,6 +67,9 @@ Required fields:
 - `driver_no` - Driver number
 - `driver_license_no` - Driver license number
 - `premium_paid` - Premium amount
+
+**Sorting Requirements:**
+The inforce view must be sorted by: policy, policy_expiry_date, vehicle_no, driver_no, inforce_yy, inforce_mm
 
 ## Python Routines Required
 
@@ -88,6 +103,17 @@ Required fields:
 - Proper date handling and policy lifecycle management
 
 ## File Organization
-- All data files in `src/create/data/` directory
+- All data files in `data/policy_system/` directory
 - Python modules in `src/create/` directory
-- Output files in project root or designated output directory
+- Inforce data in `data/inforce/` directory
+- Output files in `output/` directory
+
+## Output File Management
+- **Fixed naming convention**: Use consistent, descriptive names for all output files
+- **No temporary files**: All generated files should have permanent, meaningful names
+- **Reusable reports**: Use the same file names for iterative analysis to avoid clutter
+- **Clean output directory**: Remove temporary or test files after validation
+- **Standard report names**:
+  - `retention_analysis.csv` - Main retention analysis
+  - `inforce_summary.csv` - Inforce counts by month
+  - `cohort_analysis.csv` - Cohort-based retention analysis

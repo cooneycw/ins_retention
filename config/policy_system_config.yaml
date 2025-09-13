@@ -1,0 +1,203 @@
+# Insurance Policy System Configuration
+# Core assumptions and parameters for the policy system simulation
+
+# Date Range Configuration
+date_range:
+  start_date: "2018-01-01"
+  end_date: "2025-06-30"
+  total_months: 90
+
+# Policy Configuration
+policies:
+  initial_count: 1200
+  number_format: "8_digit"  # 00000001, 00000002, etc.
+  premium:
+    base_amount: 1500.00  # Base premium for 35-year-old, single vehicle
+    standard_deviation: 200.00
+    annual_inflation_rate: 0.05  # 5%
+    
+    # Premium calculation factors
+    calculation:
+      base_age: 35  # Age for base premium calculation
+      base_vehicles: 1  # Number of vehicles for base premium
+      
+      # Driver age factors (multipliers)
+      driver_age_factors:
+        # Young drivers (16-24): higher risk
+        16: 2.5
+        17: 2.3
+        18: 2.1
+        19: 1.9
+        20: 1.7
+        21: 1.5
+        22: 1.3
+        23: 1.2
+        24: 1.1
+        
+        # Prime age (25-64): lower risk, decreasing until 65
+        25: 1.0
+        30: 0.95
+        35: 0.90  # Base age
+        40: 0.85
+        45: 0.80
+        50: 0.75
+        55: 0.70
+        60: 0.65
+        64: 0.60
+        
+        # Senior drivers (65+): increasing risk
+        65: 0.65
+        70: 0.75
+        75: 0.85
+        80: 1.0
+        85: 1.2
+      
+      # Driver type factors
+      driver_type_factors:
+        primary: 1.0      # Full premium
+        spouse: 0.8       # 20% discount
+        secondary: 0.5    # 50% discount (less usage)
+      
+      # Vehicle type factors
+      vehicle_type_factors:
+        "Sedan": 1.0
+        "Hatchback": 0.95
+        "Wagon": 0.95
+        "Crossover": 1.05
+        "SUV": 1.1
+        "Truck": 1.15
+        "Minivan": 1.05
+        "Coupe": 1.2
+        "Convertible": 1.3
+        "Sports Car": 1.5
+      
+      # Multi-vehicle discounts
+      multi_vehicle_discounts:
+        1: 0.0    # No discount for single vehicle
+        2: 0.1    # 10% discount for 2 vehicles
+        3: 0.15   # 15% discount for 3 vehicles
+        4: 0.2    # 20% discount for 4+ vehicles
+  
+# Family Composition Distribution
+family_types:
+  single_person_single_vehicle:
+    percentage: 0.25
+    vehicles: 1
+    drivers: 1
+  single_driver_multi_vehicle:
+    percentage: 0.05
+    vehicles: [2, 3]
+    drivers: 1
+  family_multi_vehicle:
+    percentage: 0.50
+    vehicles: [2, 3, 4]
+    vehicle_weights: [0.50, 0.35, 0.15]  # 2, 3, 4 vehicles respectively
+    drivers: [2, 3, 4]
+  family_single_vehicle:
+    percentage: 0.20
+    vehicles: 1
+    drivers: [1, 2]
+
+# Vehicle Configuration
+vehicles:
+  types:
+    - "Sedan"
+    - "SUV"
+    - "Truck"
+    - "Hatchback"
+    - "Coupe"
+    - "Convertible"
+    - "Wagon"
+    - "Crossover"
+    - "Minivan"
+    - "Sports Car"
+  model_year_range:
+    earliest: 2001  # 17 years before 2018
+    latest: 2018
+    max_age: 17
+  number_format: "2_digit"  # 01, 02, 03, etc.
+  vin_length: 17
+
+# Driver Configuration
+drivers:
+  types:
+    - "primary"
+    - "spouse"
+    - "secondary"
+  age_ranges:
+    primary: [25, 65]
+    spouse: [25, 60]
+    secondary: [16, 25]
+  license_format: "ontario"  # 4 letters, 3 numbers, 2 letters
+  number_format: "2_digit"  # 01, 02, 03, etc.
+
+# Policy Lifecycle Configuration
+lifecycle:
+  renewals:
+    frequency: "annual"
+    premium_update_timing: "renewal_only"
+  
+  cancellations:
+    reasons:
+      - "better_rates_elsewhere"
+      - "service_issues"
+      - "relocation"
+      - "dissatisfaction"
+    timing: "any_point_in_year"
+  
+  new_policies:
+    reasons:
+      - "better_rates"
+      - "better_service"
+      - "referrals"
+      - "competitor_switching"
+    timing: "any_point_in_year"
+
+# Change Simulation Parameters
+changes:
+  vehicle_replacements:
+    frequency: "monthly"
+    reasons:
+      - "accident"
+      - "upgrade"
+      - "maintenance_issues"
+  
+  driver_changes:
+    additions:
+      - "kids_turning_16"
+      - "new_spouse"
+    removals:
+      - "kids_turning_25"
+      - "divorce"
+      - "vehicle_removal"
+  
+  aging:
+    drivers_age_with_renewals: true
+    vehicles_age_continuously: true
+
+# File Paths Configuration
+file_paths:
+  data:
+    policy_system: "data/policy_system"
+    inforce: "data/inforce"
+  output: "output"
+  config: "config"
+
+# Data Files
+data_files:
+  master:
+    policies: "policies_master.csv"
+    vehicles: "vehicles_master.csv"
+    drivers: "drivers_master.csv"
+    changes_log: "policy_changes_log.csv"
+  inforce:
+    monthly_view: "inforce_monthly_view.csv"
+  output:
+    reports: "policy_system_reports"
+
+# Data Quality Settings
+data_quality:
+  validate_relationships: true
+  ensure_unique_identifiers: true
+  track_all_changes: true
+  inferable_from_inforce_view: true
