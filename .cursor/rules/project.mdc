@@ -15,11 +15,18 @@ This project simulates an insurance policy system with a family-centric approach
 - ✅ **Family-centric data architecture** - families drive policy composition and driver assignments
 - ✅ **Configurable family types** - easy switching between single person, couples, and families with teens
 - ✅ **Realistic vehicle change rates** - scaled back additions to maintain realistic multi-vehicle percentages
+- ✅ **PySpark Integration** - Full PySpark-based data processing and analysis pipeline with Java 17 support
+- ✅ **Major Change Detection** - Automated detection of vehicle/driver changes using PySpark DataFrames
+- ✅ **Dynamic Client Tenure** - Client tenure calculated dynamically at each report build date
+- ✅ **Enhanced Reporting** - Comprehensive PySpark-based distribution analysis and data profiling
+- ✅ **Git Repository Management** - Proper .gitignore excluding generated CSV files and data directories
 
 ## Environment Requirements
 - **Conda Environment**: Always use the `retention` conda environment
 - **Activation**: Run `conda activate retention` before executing any Python scripts
 - **Dependencies**: All Python packages should be installed in the retention environment, not globally
+- **Java 17**: Required for PySpark 4.0.1 compatibility
+- **PySpark**: Installed via pip in the retention environment
 
 ## Data Architecture
 
@@ -33,7 +40,19 @@ This project simulates an insurance policy system with a family-centric approach
 
 ### Output Files (Final Products)
 - `inforce_monthly_view.csv` - Monthly snapshot with driver-vehicle assignment records (end-of-month status)
-- `monthly_distribution_summary.csv` - Monthly statistics and distributions analysis
+- `inforce_monthly_view_sorted/` - PySpark-generated sorted DataFrame for viewing with editors
+- `monthly_distribution_summary.csv` - Pandas-based monthly statistics and distributions analysis (fallback)
+- `monthly_distribution_summary_pyspark.csv/` - PySpark-based monthly statistics with major change indicators
+- `monthly_profiling_summary.csv/` - PySpark-based data profiling report
+- `vehicle_type_profiling.csv/` - PySpark-based vehicle type analysis
+- `driver_type_profiling.csv/` - PySpark-based driver type analysis
+
+### New PySpark Features
+- **Major Change Detection**: Automated identification of vehicle/driver changes applied to PySpark DataFrame
+- **Dynamic Client Tenure**: Calculated as (current_date - policy_start_date).days at report build time
+- **Enhanced Distribution Analysis**: Vehicle, driver, temporal, and premium distributions using PySpark
+- **Data Profiling**: Comprehensive data quality assessment and business metrics
+- **Sorted DataFrame Output**: Policy-sorted DataFrame for viewing with text editors
 
 ## Family-Centric System Architecture
 
@@ -102,24 +121,44 @@ Required fields:
 - `inforce_mm` - Month (1-12)
 - `policy` - Policy number
 - `policy_expiry_date` - Policy expiry date
+- `client_tenure_days` - Dynamic client tenure (calculated at report build time)
 - `vehicle_no` - Vehicle number
 - `vehicle_vin` - Vehicle VIN
+- `vehicle_type` - Vehicle type
+- `model_year` - Vehicle model year
 - `driver_no` - Driver number
 - `driver_license_no` - Driver license number
 - `driver_name` - Driver name
+- `driver_type` - Driver type
 - `assignment_type` - Driver-vehicle assignment type
 - `exposure_factor` - Exposure allocation factor
+- `driver_age` - Driver age
 - `premium_paid` - Premium amount
+- `major_change` - Major change flag (added by PySpark analysis)
 
 **Sorting Requirements:**
 The inforce view must be sorted by: policy, policy_expiry_date, vehicle_no, driver_no, inforce_yy, inforce_mm
 
 ## Python Routines Required
 
+### Core Pipeline (main.py)
 1. **`build_initial_state()`** - Creates families with initial vehicles/drivers and assignments
-2. **`apply_monthly_changes()`** - Simulates monthly changes respecting family type rules
-3. **`generate_inforce_view()`** - Builds final monthly inforce CSV from assignments
-4. **`distribution_analysis()`** - Analyzes inforce distributions and generates reports
+2. **`apply_monthly_changes()`** - Simulates monthly changes respecting family type rules  
+3. **`generate_inforce_view()`** - Builds final monthly inforce CSV and creates PySpark DataFrame
+4. **`distribution_analysis()`** - PySpark-based analysis with pandas fallback
+
+### PySpark Pipeline Components
+- **PySpark DataFrame Creation**: Load CSV into PySpark with schema validation
+- **Major Change Detection**: Applied to PySpark DataFrame before analysis
+- **Distribution Analysis**: Vehicle, driver, temporal, and premium distributions
+- **Data Profiling**: Comprehensive data quality and business metrics reporting
+- **Sorted DataFrame Output**: Policy-sorted output for viewing with text editors
+
+### Key Implementation Details
+- **Dynamic Client Tenure**: `tenure_days = (current_date - policy_start_date).days`
+- **Major Change Logic**: Vehicle changes, driver changes, significant age changes
+- **Premium Calculations**: Include vehicle type, driver age, and driver type factors
+- **Annual Inflation**: 5% premium increases applied each January
 
 ## Family Type Configuration
 

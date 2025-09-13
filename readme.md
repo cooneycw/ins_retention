@@ -47,6 +47,10 @@ This project simulates an insurance policy system using a **family-centric appro
 - ✅ **Family-centric data architecture** - families drive policy composition and driver assignments
 - ✅ **Configurable family types** - easy switching between single person, couples, and families with teens
 - ✅ **Realistic vehicle change rates** - scaled back additions to maintain realistic multi-vehicle percentages
+- ✅ **PySpark Integration** - Full PySpark-based data processing and analysis pipeline
+- ✅ **Major Change Detection** - Automated detection of vehicle/driver changes using PySpark
+- ✅ **Dynamic Client Tenure** - Client tenure calculated dynamically at each report build date
+- ✅ **Enhanced Reporting** - Comprehensive PySpark-based distribution analysis and profiling
 
 ## Key Features
 
@@ -55,6 +59,14 @@ This project simulates an insurance policy system using a **family-centric appro
 - **Driver-vehicle assignments create rated records** - each combination gets its own rating
 - **Configurable family types** - single person, couples, families with teens
 - **Realistic insurance industry approach** - matches real-world rating practices
+
+### PySpark Integration
+- **Large-scale data processing** - PySpark-based analysis for 100K+ records
+- **Major change detection** - Automated identification of vehicle/driver changes
+- **Dynamic client tenure** - Calculated at report build time for accuracy
+- **Comprehensive profiling** - Data quality assessment and business metrics
+- **Sorted DataFrame output** - Policy-sorted data for viewing with text editors
+- **Enhanced reporting** - Monthly statistics with major change indicators
 
 ### Driver Assignment Rules
 - **Every vehicle must have exactly 1 primary driver** (required)
@@ -89,15 +101,21 @@ Retention/
 │   ├── create/                      # Create module (Stage 1)
 │   │   ├── __init__.py              # Module initialization
 │   │   ├── build_initial_state.py   # Creates families with assignments
-│   │   ├── apply_changes.py         # Simulates monthly changes
-│   │   └── generate_inforce.py      # Builds final inforce view
-│   ├── maintain/                    # Maintenance utilities
+│   │   ├── apply_changes_proper.py  # Simulates monthly changes
+│   │   ├── generate_inforce_minimal.py # Builds final inforce view
+│   │   └── major_change_detector.py # Major change detection utilities
+│   ├── spark_analysis/              # PySpark-based analysis module
 │   │   ├── __init__.py              # Module initialization
-│   │   └── family_type_manager.py   # Family type configuration management
-│   └── report/                      # Reporting and analysis
+│   │   ├── data_loader.py           # PySpark data loading and validation
+│   │   ├── base_analysis.py         # Base PySpark analysis functionality
+│   │   ├── distribution_analysis.py # PySpark distribution analysis
+│   │   ├── major_change_analysis.py # PySpark major change detection
+│   │   ├── profiling_analysis.py    # PySpark data profiling
+│   │   └── README.md                # PySpark module documentation
+│   └── report/                      # Pandas-based reporting (fallback)
 │       ├── __init__.py              # Module initialization
 │       └── distribution_analysis.py # Distribution analysis and reporting
-├── data/
+├── data/                            # Generated data files (excluded from git)
 │   ├── policy_system/               # Master data files
 │   │   ├── families_master.csv
 │   │   ├── policies_master.csv
@@ -106,17 +124,22 @@ Retention/
 │   │   ├── driver_vehicle_assignments.csv
 │   │   └── policy_changes_log.csv
 │   └── inforce/                     # Monthly inforce data
-│       └── inforce_monthly_view.csv
-└── output/                          # Reports and analysis
-    └── monthly_distribution_summary.csv
+│       ├── inforce_monthly_view.csv
+│       └── inforce_monthly_view_sorted/ # PySpark sorted output
+└── output/                          # Reports and analysis (excluded from git)
+    ├── monthly_distribution_summary.csv
+    ├── monthly_distribution_summary_pyspark.csv/
+    ├── monthly_profiling_summary.csv/
+    ├── vehicle_type_profiling.csv/
+    └── driver_type_profiling.csv/
 ```
 
 ### Module Overview
 
-- **main.py**: Entry point for the insurance policy system
-- **src/create/**: Core module for policy data generation
-- **src/maintain/**: Configuration management utilities
-- **src/report/**: Distribution analysis and reporting
+- **main.py**: Entry point for the insurance policy system with PySpark integration
+- **src/create/**: Core module for policy data generation and major change detection
+- **src/spark_analysis/**: PySpark-based data processing and analysis (primary)
+- **src/report/**: Pandas-based reporting and analysis (fallback)
 - **config/**: YAML configuration files
 
 ## Family Type Configuration
@@ -214,7 +237,9 @@ The system generates comprehensive data including:
 
 ### Required Python Packages
 - **PyYAML**: For configuration file management
-- **pandas**: For data analysis and reporting
+- **pandas**: For data analysis and reporting (fallback)
+- **PySpark**: For large-scale data processing and analysis (primary)
+- **Java 17**: Required for PySpark 4.0.1 compatibility
 - **Standard Library**: csv, random, datetime, pathlib, typing
 
 ### Installation
@@ -222,9 +247,12 @@ The system generates comprehensive data including:
 # Activate conda environment
 conda activate retention
 
-# Install required packages
+# Install Java 17 (required for PySpark)
+conda install -c conda-forge openjdk=17
+
+# Install Python packages
 conda install pandas
-pip install PyYAML
+pip install PyYAML pyspark
 ```
 
 ## Usage Examples
@@ -244,13 +272,21 @@ python main.py
 python -c "from src.create.build_initial_state import create_initial_state; create_initial_state()"
 
 # Apply monthly changes
-python -c "from src.create.apply_changes import simulate_monthly_changes; simulate_monthly_changes()"
+python -c "from src.create.apply_changes_proper import simulate_monthly_changes; simulate_monthly_changes()"
 
-# Generate inforce view
-python -c "from src.create.generate_inforce import create_inforce_view; create_inforce_view()"
+# Generate inforce view (creates CSV and PySpark DataFrame)
+python -c "from src.create.generate_inforce_minimal import create_inforce_view; create_inforce_view()"
 
-# Run distribution analysis
-python -c "from src.report.distribution_analysis import analyze_inforce_distributions; analyze_inforce_distributions()"
+# Run PySpark distribution analysis
+python -c "
+from src.spark_analysis.data_loader import InforceDataLoader
+from src.spark_analysis.distribution_analysis import DistributionAnalysis
+loader = InforceDataLoader()
+df = loader.load_inforce_data()
+analysis = DistributionAnalysis(loader.spark)
+analysis.generate_distribution_report(df)
+loader.close()
+"
 ```
 
 ### Configuration Management
