@@ -165,12 +165,53 @@ def _generate_monthly_distribution_report(df: pd.DataFrame, output_dir: Path) ->
     """Generate monthly distribution report with requested statistics."""
     
     # Group by year and month - this gives us inforce policies (policies active at month end)
-    monthly_stats = df.groupby(['inforce_yy', 'inforce_mm']).agg({
-        'policy': 'nunique',  # Count of inforce policies
-        'premium_paid': 'mean',  # Average premium (inforce policies only)
-        'driver_age': 'mean',  # Average driver age (inforce policies only)
-        'vehicle_type': lambda x: x.value_counts().to_dict()  # Vehicle type distribution
-    }).reset_index()
+    # First, get unique policies per month to avoid double-counting
+    unique_policies_per_month = df.groupby(['inforce_yy', 'inforce_mm', 'policy']).first().reset_index()
+    
+    # Check if major_change column exists
+    has_major_change_flag = 'major_change' in unique_policies_per_month.columns
+    
+    if has_major_change_flag:
+        # Calculate stats with major change breakdown
+        monthly_stats = unique_policies_per_month.groupby(['inforce_yy', 'inforce_mm']).agg({
+            'policy': 'count',  # Count of inforce policies
+            'premium_paid': 'mean',  # Average premium (unique policies only)
+            'driver_age': 'mean',  # Average driver age (unique policies only)
+            'vehicle_type': lambda x: x.value_counts().to_dict(),  # Vehicle type distribution
+            'major_change': ['sum', 'mean']  # Count and percentage of major changes
+        }).reset_index()
+        
+        # Flatten column names
+        monthly_stats.columns = ['inforce_yy', 'inforce_mm', 'inforce_count', 'avg_premium', 
+                               'avg_driver_age', 'vehicle_type_dist', 'major_change_count', 'major_change_rate']
+        
+        # Calculate separate stats for policies with/without major changes
+        policies_with_changes = unique_policies_per_month[unique_policies_per_month['major_change'] == True]
+        policies_without_changes = unique_policies_per_month[unique_policies_per_month['major_change'] == False]
+        
+        if len(policies_with_changes) > 0:
+            stats_with_changes = policies_with_changes.groupby(['inforce_yy', 'inforce_mm']).agg({
+                'premium_paid': 'mean',
+                'driver_age': 'mean'
+            }).reset_index()
+            stats_with_changes.columns = ['inforce_yy', 'inforce_mm', 'avg_premium_with_changes', 'avg_driver_age_with_changes']
+            monthly_stats = monthly_stats.merge(stats_with_changes, on=['inforce_yy', 'inforce_mm'], how='left')
+        
+        if len(policies_without_changes) > 0:
+            stats_without_changes = policies_without_changes.groupby(['inforce_yy', 'inforce_mm']).agg({
+                'premium_paid': 'mean',
+                'driver_age': 'mean'
+            }).reset_index()
+            stats_without_changes.columns = ['inforce_yy', 'inforce_mm', 'avg_premium_without_changes', 'avg_driver_age_without_changes']
+            monthly_stats = monthly_stats.merge(stats_without_changes, on=['inforce_yy', 'inforce_mm'], how='left')
+    else:
+        # Original calculation without major change breakdown
+        monthly_stats = unique_policies_per_month.groupby(['inforce_yy', 'inforce_mm']).agg({
+            'policy': 'count',  # Count of inforce policies
+            'premium_paid': 'mean',  # Average premium (unique policies only)
+            'driver_age': 'mean',  # Average driver age (unique policies only)
+            'vehicle_type': lambda x: x.value_counts().to_dict()  # Vehicle type distribution
+        }).reset_index()
     
     # Calculate average driver and vehicle counts per inforce policy
     policy_stats = df.groupby(['inforce_yy', 'inforce_mm', 'policy']).agg({

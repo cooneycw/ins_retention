@@ -149,13 +149,17 @@ def _generate_monthly_inforce_records(master_data: Dict[str, List[Dict[str, Any]
             if not driver:
                 continue
             
+            # Calculate actual client tenure days
+            policy_start_date = datetime.strptime(policy['start_date'], '%Y-%m-%d')
+            tenure_days = (current_date - policy_start_date).days
+            
             # Create inforce record
             inforce_record = {
                 "inforce_yy": year,
                 "inforce_mm": month,
                 "policy": policy['policy_no'],
                 "policy_expiry_date": policy['current_expiry_date'],
-                "client_tenure_days": policy['client_tenure_days'],
+                "client_tenure_days": tenure_days,
                 "vehicle_no": vehicle['vehicle_no'],
                 "vehicle_vin": vehicle['vin'],
                 "vehicle_type": vehicle['vehicle_type'],

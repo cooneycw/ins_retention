@@ -51,6 +51,10 @@ def simulate_monthly_changes() -> None:
         evolution_changes = _apply_family_evolution(master_data, current_date)
         changes.extend(evolution_changes)
         
+        # Apply annual premium increases (every January)
+        if month == 1:
+            _apply_annual_premium_increases(master_data, year)
+        
         # Move to next month
         if month == 12:
             current_date = current_date.replace(year=year + 1, month=1)
@@ -455,6 +459,23 @@ def _save_changes_log(changes: List[Dict[str, Any]]) -> None:
             writer.writerow(row)
     
     print(f"  Saved {len(changes)} changes to {filepath}")
+
+
+def _apply_annual_premium_increases(master_data: Dict[str, List[Dict[str, Any]]], year: int) -> None:
+    """Apply annual premium increases based on inflation rate."""
+    if year <= 2018:  # Don't apply increases in the first year
+        return
+    
+    inflation_rate = CONFIG['policies']['premium']['annual_inflation_rate']
+    
+    # Apply inflation to all active policies
+    for policy in master_data['policies']:
+        if policy['status'] == 'active':
+            current_premium = float(policy['premium_paid'])
+            new_premium = current_premium * (1 + inflation_rate)
+            policy['premium_paid'] = round(new_premium, 2)
+    
+    print(f"    Applied {inflation_rate*100:.1f}% premium increase for {year}")
 
 
 if __name__ == "__main__":

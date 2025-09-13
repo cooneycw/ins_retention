@@ -93,7 +93,7 @@ def create_initial_state() -> None:
     
     # Calculate premiums based on assignments
     print("  - Calculating policy premiums...")
-    policies_with_premiums = _calculate_policy_premiums(policies, assignments)
+    policies_with_premiums = _calculate_policy_premiums(policies, assignments, vehicles, drivers)
     _save_csv_file(policies_with_premiums, CONFIG['data_files']['master']['policies'])
     
     print("Initial state creation completed successfully!")
@@ -491,7 +491,9 @@ def _generate_ontario_license() -> str:
 
 
 def _calculate_policy_premiums(policies: List[Dict[str, Any]], 
-                              assignments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+                              assignments: List[Dict[str, Any]],
+                              vehicles: List[Dict[str, Any]],
+                              drivers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Calculate premiums for all policies based on driver-vehicle assignments."""
     policies_with_premiums = []
     
@@ -502,7 +504,7 @@ def _calculate_policy_premiums(policies: List[Dict[str, Any]],
         family_assignments = [a for a in assignments if a["family_id"] == family_id]
         
         # Calculate premium based on assignments
-        calculated_premium = _calculate_single_policy_premium(family_assignments)
+        calculated_premium = _calculate_single_policy_premium(family_assignments, vehicles, drivers)
         
         # Update policy with calculated premium
         policy["premium_paid"] = calculated_premium
@@ -511,7 +513,9 @@ def _calculate_policy_premiums(policies: List[Dict[str, Any]],
     return policies_with_premiums
 
 
-def _calculate_single_policy_premium(assignments: List[Dict[str, Any]]) -> float:
+def _calculate_single_policy_premium(assignments: List[Dict[str, Any]], 
+                                   vehicles: List[Dict[str, Any]], 
+                                   drivers: List[Dict[str, Any]]) -> float:
     """Calculate premium for a single policy based on driver-vehicle assignments."""
     base_premium = CONFIG['policies']['premium']['base_amount']
     calc_config = CONFIG['policies']['premium']['calculation']
@@ -521,8 +525,34 @@ def _calculate_single_policy_premium(assignments: List[Dict[str, Any]]) -> float
     # Calculate premium for each assignment
     for assignment in assignments:
         if assignment["exposure_factor"] > 0:  # Only count assigned drivers
+            # Get vehicle and driver details for this assignment
+            vehicle = next((v for v in vehicles 
+                          if v["family_id"] == assignment["family_id"] and 
+                          v["vehicle_no"] == assignment["vehicle_no"]), None)
+            driver = next((d for d in drivers 
+                         if d["family_id"] == assignment["family_id"] and 
+                         d["driver_no"] == assignment["driver_no"]), None)
+            
+            if not vehicle or not driver:
+                continue
+            
             # Base premium for this assignment
             assignment_premium = base_premium * assignment["exposure_factor"]
+            
+            # Apply vehicle type factor
+            vehicle_type = vehicle["vehicle_type"]
+            vehicle_factor = calc_config["vehicle_type_factors"].get(vehicle_type, 1.0)
+            assignment_premium *= vehicle_factor
+            
+            # Apply driver age factor
+            driver_age = driver["age"]
+            age_factor = _get_age_factor(driver_age, calc_config["driver_age_factors"])
+            assignment_premium *= age_factor
+            
+            # Apply driver type factor
+            driver_type = driver["driver_type"]
+            driver_type_factor = calc_config["driver_type_factors"].get(driver_type, 1.0)
+            assignment_premium *= driver_type_factor
             
             # Add some random variation
             std_dev = CONFIG['policies']['premium']['standard_deviation']
@@ -532,6 +562,22 @@ def _calculate_single_policy_premium(assignments: List[Dict[str, Any]]) -> float
             total_premium += assignment_premium
     
     return round(max(total_premium, 100.0), 2)  # Minimum premium of $100
+
+
+def _get_age_factor(age: int, age_factors: Dict[int, float]) -> float:
+    """Get the age factor for premium calculation."""
+    # Find the closest age factor
+    if age in age_factors:
+        return age_factors[age]
+    
+    # Find the closest lower age factor
+    applicable_ages = [a for a in age_factors.keys() if a <= age]
+    if applicable_ages:
+        closest_age = max(applicable_ages)
+        return age_factors[closest_age]
+    
+    # Default to 1.0 if no factor found
+    return 1.0
 
 
 def _save_csv_file(data: List[Dict[str, Any]], filename: str) -> None:
