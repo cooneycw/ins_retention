@@ -51,6 +51,25 @@ def main() -> None:
     print("Insurance Policy System - Main Entry Point")
     print("=" * 50)
     
+    # Clean up previous PySpark output directories
+    print("Cleaning up previous PySpark output...")
+    pyspark_output_dir = Path("data/inforce/inforce_monthly_view_sorted")
+    if pyspark_output_dir.exists():
+        import shutil
+        shutil.rmtree(pyspark_output_dir)
+        print(f"✅ Removed previous PySpark output: {pyspark_output_dir}")
+    else:
+        print("No previous PySpark output to clean up")
+    
+    # Clean up previous output reports
+    output_dir = Path("output")
+    if output_dir.exists():
+        import shutil
+        shutil.rmtree(output_dir)
+        print(f"✅ Removed previous output reports: {output_dir}")
+    else:
+        print("No previous output reports to clean up")
+    
     # Ensure data directory exists
     data_dir = Path("src/create/data")
     data_dir.mkdir(parents=True, exist_ok=True)

@@ -124,10 +124,10 @@ def _generate_monthly_inforce_records(master_data: Dict[str, List[Dict[str, Any]
     active_policies = []
     for policy in master_data['policies']:
         if policy['status'] == 'cancelled':
-            # Check if policy was cancelled before this month
+            # Check if policy was cancelled on or before this month
             cancelled_date = _get_policy_cancellation_date(master_data, policy['family_id'])
-            if cancelled_date and cancelled_date < current_date:
-                continue  # Policy was cancelled before this month
+            if cancelled_date and cancelled_date <= current_date:
+                continue  # Policy was cancelled on or before this month
         active_policies.append(policy)
     
     for policy in active_policies:
@@ -137,9 +137,16 @@ def _generate_monthly_inforce_records(master_data: Dict[str, List[Dict[str, Any]
         active_assignments = _get_active_assignments_for_month(master_data, family_id, current_date)
         
         for assignment in active_assignments:
-            # Get vehicle for this assignment
+            # Get vehicle for this assignment (only vehicles that were active during this month)
             vehicle = next((v for v in master_data['vehicles'] 
-                           if v['family_id'] == family_id and v['vehicle_no'] == assignment['vehicle_no']), None)
+                           if v['family_id'] == family_id and 
+                              v['vehicle_no'] == assignment['vehicle_no'] and 
+                              datetime.strptime(v['effective_date'], '%Y-%m-%d') <= current_date and
+                              (v['status'] == 'active' or 
+                               (v['status'] == 'removed' and 
+                                'removal_date' in v and v['removal_date'] and
+                                datetime.strptime(v['removal_date'], '%Y-%m-%d') > current_date))
+                          ), None)
             if not vehicle:
                 continue
             
@@ -215,27 +222,18 @@ def _get_active_assignments_for_month(master_data: Dict[str, List[Dict[str, Any]
         # Check if assignment was active during this month
         effective_date = datetime.strptime(assignment['effective_date'], '%Y-%m-%d')
         
-        # Assignment is active if:
-        # 1. It was effective before or during this month
-        # 2. It wasn't removed before this month
+        # Assignment is active if effective_date <= current_date < end_date (or no end_date)
         if effective_date <= current_date:
-            # Check if this assignment was removed before this month
-            was_removed_before = False
-            if assignment['status'] == 'removed':
-                # Find when this assignment was removed
-                changes_df = pd.read_csv('data/policy_system/policy_changes_log.csv')
-                removal_changes = changes_df[
-                    (changes_df['family_id'] == family_id) & 
-                    (changes_df['vehicle_no'] == assignment['vehicle_no']) &
-                    (changes_df['change_type'].isin(['vehicle_removal', 'vehicle_substitution']))
-                ]
-                
-                if len(removal_changes) > 0:
-                    removal_date = datetime.strptime(removal_changes.iloc[0]['date'], '%Y-%m-%d')
-                    if removal_date < current_date:
-                        was_removed_before = True
-            
-            if not was_removed_before:
+            end_date_str = assignment.get('end_date', '')
+            if end_date_str:
+                try:
+                    end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+                except Exception:
+                    end_date = None
+            else:
+                end_date = None
+
+            if end_date is None or current_date < end_date:
                 active_assignments.append(assignment)
     
     return active_assignments

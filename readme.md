@@ -52,6 +52,10 @@ This project simulates an insurance policy system using a **family-centric appro
 - ✅ **Major Change Detection** - Automated detection of vehicle/driver changes using PySpark
 - ✅ **Dynamic Client Tenure** - Client tenure calculated dynamically at each report build date
 - ✅ **Enhanced Reporting** - Comprehensive PySpark-based distribution analysis and profiling
+- ✅ **Premium Calculation Fixes** - Fixed premium recalculation when exposure factors change, disabled random component
+- ✅ **Data Type Consistency** - Fixed string/int/float casting issues in premium calculations
+- ✅ **Premium Validation** - Created comprehensive validator to compare policy system vs inforce premiums
+- ✅ **Inforce Premium Trace Investigation** - Identified that inforce premiums are not updating with policy modifications
 
 ## Key Features
 
@@ -232,6 +236,9 @@ The system generates comprehensive data including:
 - Vehicle type factors
 - Multi-vehicle discounts
 - Annual inflation adjustments
+- **Premium Recalculation**: Premiums are recalculated when exposure factors change during driver reassignments
+- **Data Type Consistency**: All premium calculations use proper int/float casting for driver ages and exposure factors
+- **Deterministic Algorithm**: Random component disabled for precise premium calculations
 
 ### Driver Assignment Logic (Corrected)
 **✅ FIXED**: Vehicle substitution logic now uses proper assignment rules
@@ -252,6 +259,20 @@ The system generates comprehensive data including:
 - `src/create/build_initial_state.py`: Initial assignment logic
 - `src/create/apply_changes_proper.py`: Vehicle change assignment logic (FIXED)
 - `.cursor/rules/driver_assignment.mdc`: Detailed business rules documentation
+
+## Current Investigation Status
+
+### Premium Calculation Issues
+- ✅ **Fixed Premium Recalculation**: Premiums now recalculate when exposure factors change during driver reassignments
+- ✅ **Fixed Data Type Issues**: Resolved string/int/float casting problems in premium calculations
+- ✅ **Disabled Random Component**: Premium calculations now use deterministic algorithm
+- ✅ **Created Validation Tool**: `validate_premium_calculations.py` compares policy system vs inforce premiums
+- 🔍 **Inforce Premium Trace Issue**: Identified that inforce premiums are not updating with policy modifications or inflation adjustments
+
+### Known Issues
+- **Inforce Premium Trace**: The inforce data shows static premiums that don't reflect policy modifications or annual inflation adjustments
+- **Premium Display in Tkinter**: The Tkinter viewer shows incorrect premium values that don't change over time
+- **Next Steps**: Need to investigate why inforce generation is not capturing premium changes over time
 
 ## Dependencies
 

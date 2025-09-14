@@ -7,6 +7,7 @@ This replaces the minimal version with real change simulation.
 
 import csv
 import random
+import string
 import yaml
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -188,7 +189,8 @@ def _add_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
         'vin': vin,
         'vehicle_type': vehicle_type,
         'model_year': str(model_year),
-        'status': 'active'
+        'status': 'active',
+        'effective_date': current_date.strftime('%Y-%m-%d')
     }
     
     master_data['vehicles'].append(new_vehicle)
@@ -223,6 +225,7 @@ def _remove_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
     
     # Mark vehicle as removed
     vehicle_to_remove['status'] = 'removed'
+    vehicle_to_remove['removal_date'] = current_date.strftime('%Y-%m-%d')
     
     # Mark assignments as removed
     for assignment in master_data['assignments']:
@@ -230,6 +233,7 @@ def _remove_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
             assignment['vehicle_no'] == vehicle_no and
             assignment['status'] == 'active'):
             assignment['status'] = 'removed'
+            assignment['end_date'] = current_date.strftime('%Y-%m-%d')
     
     # Check if this was the last vehicle - if so, cancel the policy
     remaining_vehicles = [v for v in master_data['vehicles'] 
@@ -280,6 +284,10 @@ def _substitute_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
     old_vehicle = random.choice(family_vehicles)
     old_vehicle_no = old_vehicle['vehicle_no']
     
+    # Store original vehicle data before modification
+    original_vehicle_type = old_vehicle['vehicle_type']
+    original_model_year = old_vehicle['model_year']
+    
     # Check for coverage gap
     coverage_gap_prob = CONFIG['changes']['vehicle_changes']['substitutions']['coverage_gap_probability']
     has_coverage_gap = random.random() < coverage_gap_prob
@@ -287,47 +295,64 @@ def _substitute_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
     if has_coverage_gap:
         # Mark old vehicle as removed first
         old_vehicle['status'] = 'removed'
+        old_vehicle['removal_date'] = current_date.strftime('%Y-%m-%d')
         
-        # Mark assignments as removed
+        # Mark assignments as removed with end_date
         for assignment in master_data['assignments']:
             if (assignment['family_id'] == family_id and 
                 assignment['vehicle_no'] == old_vehicle_no and
                 assignment['status'] == 'active'):
                 assignment['status'] = 'removed'
+                assignment['end_date'] = current_date.strftime('%Y-%m-%d')
         
         # Reset policy tenure if configured
         if CONFIG['changes']['vehicle_changes']['substitutions']['tenure_reset_on_gap']:
             policy = next(p for p in master_data['policies'] if p['family_id'] == family_id)
             policy['client_tenure_days'] = '0'
     
-    # Generate new vehicle
+    # Generate new vehicle data - ensure it's actually different
     vehicle_types = CONFIG['vehicles']['types']
-    vehicle_type = random.choice(vehicle_types)
+    available_types = [vt for vt in vehicle_types if vt != original_vehicle_type]
     
+    # If all types are the same (shouldn't happen with 10 types), pick any type
+    if not available_types:
+        available_types = vehicle_types
+    
+    vehicle_type = random.choice(available_types)
     model_year = random.randint(2001, 2018)
+    
+    # Ensure model year is different for meaningful substitution
+    max_attempts = 10
+    attempts = 0
+    while model_year == int(original_model_year) and attempts < max_attempts:
+        model_year = random.randint(2001, 2018)
+        attempts += 1
+    
     vin = f"VIN{family_id}{old_vehicle_no}{model_year}"
     
-    new_vehicle = {
-        'vehicle_no': old_vehicle_no,  # Keep same vehicle number
-        'family_id': family_id,
-        'vin': vin,
-        'vehicle_type': vehicle_type,
-        'model_year': str(model_year),
-        'status': 'active'
-    }
+    # Update the vehicle in place (preserving the reference)
+    old_vehicle['vin'] = vin
+    old_vehicle['vehicle_type'] = vehicle_type
+    old_vehicle['model_year'] = str(model_year)
+    old_vehicle['status'] = 'active'
     
-    # Replace the old vehicle
-    old_vehicle.update(new_vehicle)
-    
-    # Apply corrected driver assignment logic
-    _reassign_drivers_to_vehicles(master_data, family_id, current_date)
+    # Only reassign drivers if there was a coverage gap (assignments were removed)
+    # For simple substitutions, keep existing driver assignments
+    if has_coverage_gap:
+        _reassign_drivers_to_vehicles(master_data, family_id, current_date)
+    else:
+        # If no coverage gap, the vehicle is updated but assignments should remain
+        # We need to make sure the vehicle_no still points to the same drivers
+        # Since we're updating the vehicle in-place, the assignments should still be valid
+        # and do not need to be recreated or changed.
+        pass
     
     return {
         'change_type': 'vehicle_substitution',
         'date': current_date.strftime('%Y-%m-%d'),
         'family_id': family_id,
         'vehicle_no': old_vehicle_no,
-        'old_vehicle_type': old_vehicle['vehicle_type'],
+        'old_vehicle_type': original_vehicle_type,
         'new_vehicle_type': vehicle_type,
         'coverage_gap': has_coverage_gap,
         'tenure_reset': has_coverage_gap and CONFIG['changes']['vehicle_changes']['substitutions']['tenure_reset_on_gap'],
@@ -352,6 +377,7 @@ def _reassign_drivers_to_vehicles(master_data: Dict[str, List[Dict[str, Any]]],
         if (assignment['family_id'] == family_id and 
             assignment['status'] == 'active'):
             assignment['status'] = 'removed'
+            assignment['end_date'] = current_date.strftime('%Y-%m-%d')
     
     # Apply corrected assignment logic
     num_vehicles = len(active_vehicles)
@@ -364,73 +390,84 @@ def _reassign_drivers_to_vehicles(master_data: Dict[str, List[Dict[str, Any]]],
     has_teens = any(int(d['age']) <= 24 for d in active_drivers)
     
     # Assignment logic based on corrected rules
-    if num_drivers <= num_vehicles:
-        # Each driver gets their own vehicle
-        for i, driver in enumerate(active_drivers):
+    if num_vehicles == num_drivers:
+        # One-to-one assignments
+        for i in range(num_vehicles):
+            driver = active_drivers[i]
             vehicle = active_vehicles[i]
-            assignment_type = 'primary'
-            
-            # Create new assignment
             new_assignment = {
                 'assignment_id': f"ASS{family_id}{vehicle['vehicle_no']}{driver['driver_no']}",
                 'family_id': family_id,
                 'vehicle_no': vehicle['vehicle_no'],
                 'driver_no': driver['driver_no'],
-                'assignment_type': assignment_type,
+                'assignment_type': 'primary',
                 'exposure_factor': '1.0',
                 'effective_date': current_date.strftime('%Y-%m-%d'),
+                'end_date': '',
                 'status': 'active'
             }
             master_data['assignments'].append(new_assignment)
-    
-    else:  # num_drivers > num_vehicles
-        # Some drivers will be assigned to multiple vehicles
+    elif num_vehicles > num_drivers:
+        # More vehicles than drivers → some drivers cover multiple vehicles (no secondary needed)
         for i, vehicle in enumerate(active_vehicles):
-            # Primary driver (first driver)
             primary_driver = active_drivers[i % num_drivers]
-            assignment_type = 'primary'
-            
-            # Create primary assignment
             new_assignment = {
                 'assignment_id': f"ASS{family_id}{vehicle['vehicle_no']}{primary_driver['driver_no']}",
                 'family_id': family_id,
                 'vehicle_no': vehicle['vehicle_no'],
                 'driver_no': primary_driver['driver_no'],
-                'assignment_type': assignment_type,
+                'assignment_type': 'primary',
                 'exposure_factor': '1.0',
                 'effective_date': current_date.strftime('%Y-%m-%d'),
+                'end_date': '',
                 'status': 'active'
             }
             master_data['assignments'].append(new_assignment)
-            
-            # Secondary driver if there are teens or more drivers than vehicles
+    else:  # num_drivers > num_vehicles
+        # More drivers than vehicles → primary per vehicle, optional secondary (per rules)
+        for i, vehicle in enumerate(active_vehicles):
+            primary_driver = active_drivers[i] if i < num_drivers else active_drivers[i % num_drivers]
+            # Primary
+            new_assignment = {
+                'assignment_id': f"ASS{family_id}{vehicle['vehicle_no']}{primary_driver['driver_no']}",
+                'family_id': family_id,
+                'vehicle_no': vehicle['vehicle_no'],
+                'driver_no': primary_driver['driver_no'],
+                'assignment_type': 'primary',
+                'exposure_factor': '1.0',
+                'effective_date': current_date.strftime('%Y-%m-%d'),
+                'end_date': '',
+                'status': 'active'
+            }
+            master_data['assignments'].append(new_assignment)
+            # Secondary only if teens present OR more drivers than vehicles
             if has_teens or num_drivers > num_vehicles:
-                # Find a different driver for secondary assignment
-                secondary_driver = None
-                for driver in active_drivers:
-                    if driver['driver_no'] != primary_driver['driver_no']:
-                        secondary_driver = driver
-                        break
-                
+                # pick a different driver (first one not equal to primary)
+                secondary_driver = next((d for d in active_drivers if d['driver_no'] != primary_driver['driver_no']), None)
                 if secondary_driver:
-                    # Determine assignment type based on driver age
-                    if int(secondary_driver['age']) <= 24:
-                        assignment_type = 'secondary_teen'
-                    else:
-                        assignment_type = 'secondary_adult'
+                    assignment_type = 'secondary_teen' if int(secondary_driver['age']) <= 24 else 'secondary_adult'
+                    exposure_factor = CONFIG['driver_assignment']['exposure_allocations']['teen_secondary'] if assignment_type == 'secondary_teen' else CONFIG['driver_assignment']['exposure_allocations']['secondary_adult']
                     
-                    # Create secondary assignment
-                    new_assignment = {
+                    new_secondary_assignment = {
                         'assignment_id': f"ASS{family_id}{vehicle['vehicle_no']}{secondary_driver['driver_no']}",
                         'family_id': family_id,
                         'vehicle_no': vehicle['vehicle_no'],
                         'driver_no': secondary_driver['driver_no'],
                         'assignment_type': assignment_type,
-                        'exposure_factor': '0.5',
+                        'exposure_factor': exposure_factor,
                         'effective_date': current_date.strftime('%Y-%m-%d'),
+                        'end_date': '',
                         'status': 'active'
                     }
-                    master_data['assignments'].append(new_assignment)
+                    master_data['assignments'].append(new_secondary_assignment)
+                    
+                    # CRITICAL FIX: Only reduce primary adult's exposure if secondary is also an adult
+                    # If secondary is a teen, primary adult keeps 1.0 exposure
+                    if assignment_type == 'secondary_adult':
+                        new_assignment['exposure_factor'] = CONFIG['driver_assignment']['exposure_allocations']['primary_shared']
+    
+    # Recalculate premiums after driver reassignments
+    _recalculate_policy_premiums(master_data, family_id)
 
 
 def _apply_family_evolution(master_data: Dict[str, List[Dict[str, Any]]], 
@@ -438,10 +475,215 @@ def _apply_family_evolution(master_data: Dict[str, List[Dict[str, Any]]],
     """Apply family evolution changes for the current month."""
     changes = []
     
-    # For now, skip family evolution since we're using single person families only
-    # This would implement marriage, divorce, children turning 16, etc.
+    # Get family evolution probabilities
+    family_evolution = CONFIG['changes']['family_evolution']
+    
+    # Process each family
+    for family in master_data['families']:
+        if family['status'] != 'active':
+            continue
+        
+        family_id = family['family_id']
+        family_type = family['family_type']
+        family_config = CONFIG['family_types'][family_type]
+        
+        # Adult additions (marriage, partnership)
+        if (family_config['can_add_adults'] and
+            random.random() < family_evolution['adult_additions']['probability']):
+            
+            change = _add_adult(master_data, family_id, current_date)
+            if change:
+                changes.append(change)
+        
+        # Adult removals (divorce, separation, death)
+        if (family_config['can_remove_adults'] and
+            random.random() < family_evolution['adult_removals']['probability']):
+            
+            change = _remove_adult(master_data, family_id, current_date)
+            if change:
+                changes.append(change)
+        
+        # Teen additions (children turning 16)
+        if (family_config['can_add_teens'] and
+            random.random() < family_evolution['teen_additions']['probability']):
+            
+            change = _add_teen(master_data, family_id, current_date)
+            if change:
+                changes.append(change)
+        
+        # Teen removals (aging out, moving out)
+        if (family_config['can_remove_teens'] and
+            random.random() < family_evolution['teen_removals']['probability']):
+            
+            change = _remove_teen(master_data, family_id, current_date)
+            if change:
+                changes.append(change)
     
     return changes
+
+
+def _add_adult(master_data: Dict[str, List[Dict[str, Any]]], 
+               family_id: str, current_date: datetime) -> Dict[str, Any]:
+    """Add an adult driver to a family."""
+    # Get next driver number for this family
+    family_drivers = [d for d in master_data['drivers'] if d['family_id'] == family_id]
+    next_driver_no = max([int(d['driver_no']) for d in family_drivers]) + 1
+    
+    # Generate driver name
+    first_names = CONFIG['drivers']['name_generation']['first_names']
+    last_names = CONFIG['drivers']['name_generation']['last_names']
+    driver_name = f"{random.choice(first_names)} {random.choice(last_names)}"
+    
+    # Generate adult age (25-65)
+    driver_age = random.randint(25, 65)
+    
+    # Generate driver license
+    license_no = f"{''.join(random.choices(string.ascii_uppercase, k=4))}{''.join(random.choices(string.digits, k=3))}{''.join(random.choices(string.ascii_uppercase, k=2))}"
+    
+    new_driver = {
+        'driver_no': str(next_driver_no),
+        'family_id': family_id,
+        'driver_license_no': license_no,
+        'driver_name': driver_name,
+        'driver_type': 'adult',
+        'age': str(driver_age),
+        'birthday': f"{current_date.year - driver_age}-{random.randint(1,12):02d}-{random.randint(1,28):02d}",
+        'status': 'active'
+    }
+    
+    master_data['drivers'].append(new_driver)
+    
+    # Reassign drivers to vehicles with new driver
+    _reassign_drivers_to_vehicles(master_data, family_id, current_date)
+    
+    return {
+        'change_type': 'adult_addition',
+        'date': current_date.strftime('%Y-%m-%d'),
+        'family_id': family_id,
+        'driver_no': str(next_driver_no),
+        'driver_name': driver_name,
+        'reason': random.choice(CONFIG['changes']['family_evolution']['adult_additions']['reasons'])
+    }
+
+
+def _remove_adult(master_data: Dict[str, List[Dict[str, Any]]], 
+                  family_id: str, current_date: datetime) -> Dict[str, Any]:
+    """Remove an adult driver from a family."""
+    # Get active adult drivers for this family
+    family_adults = [d for d in master_data['drivers'] 
+                    if d['family_id'] == family_id and d['status'] == 'active' and d['driver_type'] == 'adult']
+    
+    if len(family_adults) <= 1:
+        return None  # Don't remove the last adult driver
+    
+    # Select an adult to remove
+    adult_to_remove = random.choice(family_adults)
+    adult_driver_no = adult_to_remove['driver_no']
+    
+    # Mark driver as removed
+    adult_to_remove['status'] = 'removed'
+    
+    # Mark all assignments for this driver as removed
+    for assignment in master_data['assignments']:
+        if (assignment['family_id'] == family_id and 
+            assignment['driver_no'] == adult_driver_no and
+            assignment['status'] == 'active'):
+            assignment['status'] = 'removed'
+            assignment['end_date'] = current_date.strftime('%Y-%m-%d')
+    
+    # Reassign remaining drivers to vehicles
+    _reassign_drivers_to_vehicles(master_data, family_id, current_date)
+    
+    return {
+        'change_type': 'adult_removal',
+        'date': current_date.strftime('%Y-%m-%d'),
+        'family_id': family_id,
+        'driver_no': adult_driver_no,
+        'driver_name': adult_to_remove['driver_name'],
+        'reason': random.choice(CONFIG['changes']['family_evolution']['adult_removals']['reasons'])
+    }
+
+
+def _add_teen(master_data: Dict[str, List[Dict[str, Any]]], 
+              family_id: str, current_date: datetime) -> Dict[str, Any]:
+    """Add a teen driver to a family."""
+    # Get next driver number for this family
+    family_drivers = [d for d in master_data['drivers'] if d['family_id'] == family_id]
+    next_driver_no = max([int(d['driver_no']) for d in family_drivers]) + 1
+    
+    # Generate driver name
+    first_names = CONFIG['drivers']['name_generation']['first_names']
+    last_names = CONFIG['drivers']['name_generation']['last_names']
+    driver_name = f"{random.choice(first_names)} {random.choice(last_names)}"
+    
+    # Generate teen age (16-24)
+    driver_age = random.randint(16, 24)
+    
+    # Generate driver license
+    license_no = f"{''.join(random.choices(string.ascii_uppercase, k=4))}{''.join(random.choices(string.digits, k=3))}{''.join(random.choices(string.ascii_uppercase, k=2))}"
+    
+    new_driver = {
+        'driver_no': str(next_driver_no),
+        'family_id': family_id,
+        'driver_license_no': license_no,
+        'driver_name': driver_name,
+        'driver_type': 'teen',
+        'age': str(driver_age),
+        'birthday': f"{current_date.year - driver_age}-{random.randint(1,12):02d}-{random.randint(1,28):02d}",
+        'status': 'active'
+    }
+    
+    master_data['drivers'].append(new_driver)
+    
+    # Reassign drivers to vehicles with new teen driver
+    _reassign_drivers_to_vehicles(master_data, family_id, current_date)
+    
+    return {
+        'change_type': 'teen_addition',
+        'date': current_date.strftime('%Y-%m-%d'),
+        'family_id': family_id,
+        'driver_no': str(next_driver_no),
+        'driver_name': driver_name,
+        'reason': random.choice(CONFIG['changes']['family_evolution']['teen_additions']['reasons'])
+    }
+
+
+def _remove_teen(master_data: Dict[str, List[Dict[str, Any]]], 
+                 family_id: str, current_date: datetime) -> Dict[str, Any]:
+    """Remove a teen driver from a family."""
+    # Get active teen drivers for this family
+    family_teens = [d for d in master_data['drivers'] 
+                   if d['family_id'] == family_id and d['status'] == 'active' and d['driver_type'] == 'teen']
+    
+    if len(family_teens) == 0:
+        return None  # No teens to remove
+    
+    # Select a teen to remove
+    teen_to_remove = random.choice(family_teens)
+    teen_driver_no = teen_to_remove['driver_no']
+    
+    # Mark driver as removed
+    teen_to_remove['status'] = 'removed'
+    
+    # Mark all assignments for this driver as removed
+    for assignment in master_data['assignments']:
+        if (assignment['family_id'] == family_id and 
+            assignment['driver_no'] == teen_driver_no and
+            assignment['status'] == 'active'):
+            assignment['status'] = 'removed'
+            assignment['end_date'] = current_date.strftime('%Y-%m-%d')
+    
+    # Reassign remaining drivers to vehicles
+    _reassign_drivers_to_vehicles(master_data, family_id, current_date)
+    
+    return {
+        'change_type': 'teen_removal',
+        'date': current_date.strftime('%Y-%m-%d'),
+        'family_id': family_id,
+        'driver_no': teen_driver_no,
+        'driver_name': teen_to_remove['driver_name'],
+        'reason': random.choice(CONFIG['changes']['family_evolution']['teen_removals']['reasons'])
+    }
 
 
 def _load_csv_file(filepath: Path) -> List[Dict[str, Any]]:
@@ -488,11 +730,24 @@ def _save_csv_file(data: List[Dict[str, Any]], filepath: Path) -> None:
     if not data:
         return
     
+    # Collect all possible fieldnames from all records
+    all_fields = set()
+    for record in data:
+        all_fields.update(record.keys())
+    
+    # Sort fieldnames for consistent output
+    fieldnames = sorted(all_fields)
+    
+    # Ensure all records have all fields (fill missing fields with empty string)
+    normalized_data = []
+    for record in data:
+        normalized_record = {field: record.get(field, '') for field in fieldnames}
+        normalized_data.append(normalized_record)
+    
     with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = data[0].keys()
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(data)
+        writer.writerows(normalized_data)
 
 
 def _save_changes_log(changes: List[Dict[str, Any]]) -> None:
@@ -521,6 +776,94 @@ def _save_changes_log(changes: List[Dict[str, Any]]) -> None:
             writer.writerow(row)
     
     print(f"  Saved {len(changes)} changes to {filepath}")
+
+
+def _recalculate_policy_premiums(master_data: Dict[str, List[Dict[str, Any]]], family_id: str) -> None:
+    """Recalculate premiums for a specific family after assignment changes."""
+    # Get the policy for this family
+    policy = next((p for p in master_data['policies'] if p['family_id'] == family_id), None)
+    if not policy or policy['status'] != 'active':
+        return
+    
+    # Get assignments for this family
+    family_assignments = [a for a in master_data['assignments'] 
+                         if a['family_id'] == family_id and a['status'] == 'active']
+    
+    # Calculate new premium based on current assignments
+    new_premium = _calculate_single_policy_premium(family_assignments, master_data['vehicles'], master_data['drivers'])
+    
+    # Update the policy premium
+    policy['premium_paid'] = new_premium
+
+
+def _calculate_single_policy_premium(assignments: List[Dict[str, Any]], 
+                                   vehicles: List[Dict[str, Any]], 
+                                   drivers: List[Dict[str, Any]]) -> float:
+    """Calculate premium for a single policy based on driver-vehicle assignments."""
+    base_premium = CONFIG['policies']['premium']['base_amount']
+    calc_config = CONFIG['policies']['premium']['calculation']
+    
+    total_premium = 0.0
+    
+    # Calculate premium for each assignment
+    for assignment in assignments:
+        if float(assignment["exposure_factor"]) > 0:  # Only count assigned drivers
+            # Get vehicle and driver details for this assignment
+            vehicle = next((v for v in vehicles 
+                          if v["family_id"] == assignment["family_id"] and 
+                          v["vehicle_no"] == assignment["vehicle_no"]), None)
+            driver = next((d for d in drivers 
+                         if d["family_id"] == assignment["family_id"] and 
+                         d["driver_no"] == assignment["driver_no"]), None)
+            
+            if not vehicle or not driver:
+                continue
+            
+            # Base premium for this assignment
+            assignment_premium = base_premium * float(assignment["exposure_factor"])
+            
+            # Apply vehicle type factor
+            vehicle_type = vehicle["vehicle_type"]
+            vehicle_factor = calc_config["vehicle_type_factors"].get(vehicle_type, 1.0)
+            assignment_premium *= vehicle_factor
+            
+            # Apply driver age factor
+            driver_age = int(driver["age"])
+            age_factor = _get_age_factor(driver_age, calc_config["driver_age_factors"])
+            assignment_premium *= age_factor
+            
+            # Apply driver type factor
+            driver_type = driver["driver_type"]
+            driver_type_factor = calc_config["driver_type_factors"].get(driver_type, 1.0)
+            assignment_premium *= driver_type_factor
+            
+            # Add some random variation
+            std_dev = CONFIG['policies']['premium']['standard_deviation']
+            variation = random.normalvariate(0, std_dev * 0.1)  # 10% of std dev for variation
+            assignment_premium += variation
+            
+            total_premium += assignment_premium
+    
+    return round(max(total_premium, 100.0), 2)  # Minimum premium of $100
+
+
+def _get_age_factor(age: int, age_factors: Dict) -> float:
+    """Get the age factor for premium calculation."""
+    # Convert age_factors keys to integers if they're strings
+    int_age_factors = {int(k): v for k, v in age_factors.items()}
+    
+    # Find the closest age factor
+    if age in int_age_factors:
+        return int_age_factors[age]
+    
+    # Find the closest lower age factor
+    applicable_ages = [a for a in int_age_factors.keys() if a <= age]
+    if applicable_ages:
+        closest_age = max(applicable_ages)
+        return int_age_factors[closest_age]
+    
+    # Default to 1.0 if no factor found
+    return 1.0
 
 
 def _apply_annual_premium_increases(master_data: Dict[str, List[Dict[str, Any]]], year: int) -> None:

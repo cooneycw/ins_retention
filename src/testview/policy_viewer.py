@@ -63,7 +63,23 @@ class PolicyViewer:
                 csv_files = list(self.csv_path.glob("part-*.csv"))
                 if not csv_files:
                     raise FileNotFoundError(f"No CSV files found in directory: {self.csv_path}")
-                csv_file = csv_files[0]  # Use the first CSV file found
+                
+                # Use the file with the most records (usually part-00000)
+                import pandas as pd
+                best_file = None
+                max_records = 0
+                for csv_file in csv_files:
+                    try:
+                        # Quick count of records without loading all data
+                        with open(csv_file, 'r') as f:
+                            record_count = sum(1 for line in f) - 1  # Subtract header
+                        if record_count > max_records:
+                            max_records = record_count
+                            best_file = csv_file
+                    except Exception:
+                        continue
+                
+                csv_file = best_file if best_file else csv_files[0]
             else:
                 csv_file = self.csv_path
             
@@ -206,6 +222,8 @@ class PolicyViewer:
                   command=self.prev_month).grid(row=0, column=2, padx=2)
         ttk.Button(time_frame, text="Next Month →", 
                   command=self.next_month).grid(row=0, column=3, padx=2)
+        ttk.Button(time_frame, text="Reset to 2018-01", 
+                  command=self.reset_to_2018_01).grid(row=0, column=4, padx=2)
         
         # Bind Enter key to update display
         policy_entry.bind('<Return>', lambda e: self.set_policy_from_entry())
@@ -357,9 +375,8 @@ Inforce Date: {self.current_year}-{self.current_month:02d}
         drivers_frame = ttk.LabelFrame(paned_window, text="All Drivers", padding=5)
         paned_window.add(drivers_frame, weight=1)
         
-        # Get unique drivers for this policy
-        all_drivers_data = self.df[self.df['policy'] == self.current_policy]
-        unique_drivers = all_drivers_data[['driver_no', 'driver_name', 'driver_age']].drop_duplicates()
+        # Get unique drivers for the CURRENT MONTH from the filtered 'data'
+        unique_drivers = data[['driver_no', 'driver_name', 'driver_age']].drop_duplicates()
         
         drivers_columns = ['driver_no', 'driver_name', 'driver_age']
         drivers_tree = ttk.Treeview(drivers_frame, columns=drivers_columns, show='headings', height=4)
@@ -404,7 +421,7 @@ Inforce Date: {self.current_year}-{self.current_month:02d}
         paned_window.add(vehicles_frame, weight=1)
         
         # Get unique vehicles for this policy
-        unique_vehicles = all_drivers_data[['vehicle_no', 'vehicle_type', 'model_year']].drop_duplicates()
+        unique_vehicles = data[['vehicle_no', 'vehicle_type', 'model_year']].drop_duplicates()
         
         vehicles_columns = ['vehicle_no', 'vehicle_type', 'model_year']
         vehicles_tree = ttk.Treeview(vehicles_frame, columns=vehicles_columns, show='headings', height=4)
@@ -602,13 +619,13 @@ Inforce Date: {self.current_year}-{self.current_month:02d}
     
     def _navigate_to_policy(self, policy: str) -> None:
         """Navigate to a specific policy while keeping the current time."""
-        # Set the policy
+        # Set the policy and sync index so Prev/Next work predictably
         self.current_policy = policy
+        if hasattr(self, 'policies') and self.policies and policy in self.policies:
+            self.policy_index = self.policies.index(policy)
         
-        # Keep the current time (don't change year/month)
-        # Just update the display
+        # Keep the current time (don't change year/month) and refresh
         self.update_display()
-        
         print(f"Navigated to policy {policy} at current time {self.current_year}-{self.current_month:02d}")
     
     def _add_change_context(self, major_change_records: pd.DataFrame) -> None:
@@ -782,6 +799,21 @@ Inforce Date: {self.current_year}-{self.current_month:02d}
             self.time_index += 1
             self.current_year, self.current_month = self.years_months[self.time_index]
             self.update_display()
+    
+    def reset_to_2018_01(self) -> None:
+        """Reset time to 2018-01."""
+        self.current_year = 2018
+        self.current_month = 1
+        
+        # Find the index for 2018-01 in the years_months list
+        target_index = 0
+        for i, (year, month) in enumerate(self.years_months):
+            if year == 2018 and month == 1:
+                target_index = i
+                break
+        
+        self.time_index = target_index
+        self.update_display()
     
     def set_policy_from_entry(self) -> None:
         """Set policy from entry field."""

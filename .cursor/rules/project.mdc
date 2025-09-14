@@ -21,6 +21,10 @@ This project simulates an insurance policy system with a family-centric approach
 - ✅ **Enhanced Reporting** - Comprehensive PySpark-based distribution analysis and data profiling
 - ✅ **Git Repository Management** - Proper .gitignore excluding generated CSV files and data directories
 - ✅ **Corrected Driver Assignment Logic** - Fixed vehicle substitution logic to use proper assignment rules
+- ✅ **Premium Calculation Fixes** - Fixed premium recalculation when exposure factors change, disabled random component
+- ✅ **Data Type Consistency** - Fixed string/int/float casting issues in premium calculations
+- ✅ **Premium Validation** - Created comprehensive validator to compare policy system vs inforce premiums
+- ✅ **Inforce Premium Trace Investigation** - Identified that inforce premiums are not updating with policy modifications
 
 ## Environment Requirements
 - **Conda Environment**: Always use the `retention` conda environment
@@ -168,6 +172,9 @@ The inforce view must be sorted by: policy, policy_expiry_date, vehicle_no, driv
 - **Major Change Logic**: Vehicle changes, driver changes, significant age changes
 - **Premium Calculations**: Include vehicle type, driver age, and driver type factors
 - **Annual Inflation**: 5% premium increases applied each January
+- **Premium Recalculation**: Premiums are recalculated when exposure factors change during driver reassignments
+- **Data Type Consistency**: All premium calculations use proper int/float casting for driver ages and exposure factors
+- **Random Component Disabled**: Premium calculations use deterministic algorithm without random variation
 
 ## Family Type Configuration
 

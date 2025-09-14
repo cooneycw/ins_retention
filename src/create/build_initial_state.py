@@ -424,12 +424,14 @@ def _assign_drivers_to_vehicles(vehicles: List[Dict[str, Any]],
             })
             assignment_counter += 1
             
-            # Adjust primary driver exposure to shared
-            for assignment in assignments:
-                if (assignment["vehicle_no"] == vehicle_no and 
-                    assignment["assignment_type"] == "primary"):
-                    assignment["exposure_factor"] = EXPOSURE_ALLOCATIONS["primary_shared"]
-                    break
+            # Adjust primary driver exposure to shared ONLY if secondary is an adult
+            # If secondary is a teen, primary adult keeps 1.0 exposure
+            if assignment_type == "secondary_adult":
+                for assignment in assignments:
+                    if (assignment["vehicle_no"] == vehicle_no and 
+                        assignment["assignment_type"] == "primary"):
+                        assignment["exposure_factor"] = EXPOSURE_ALLOCATIONS["primary_shared"]
+                        break
     
     # SCENARIO 3: Equal drivers and vehicles (sum(drivers) = sum(vehicles))
     else:
