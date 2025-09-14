@@ -48,6 +48,7 @@ This project simulates an insurance policy system using a **family-centric appro
 - ✅ **Configurable family types** - easy switching between single person, couples, and families with teens
 - ✅ **Realistic vehicle change rates** - scaled back additions to maintain realistic multi-vehicle percentages
 - ✅ **PySpark Integration** - Full PySpark-based data processing and analysis pipeline
+- ✅ **Corrected Driver Assignment Logic** - Fixed vehicle substitution logic to use proper assignment rules
 - ✅ **Major Change Detection** - Automated detection of vehicle/driver changes using PySpark
 - ✅ **Dynamic Client Tenure** - Client tenure calculated dynamically at each report build date
 - ✅ **Enhanced Reporting** - Comprehensive PySpark-based distribution analysis and profiling
@@ -127,8 +128,7 @@ Retention/
 │       ├── inforce_monthly_view.csv
 │       └── inforce_monthly_view_sorted/ # PySpark sorted output
 └── output/                          # Reports and analysis (excluded from git)
-    ├── monthly_distribution_summary.csv
-    ├── monthly_distribution_summary_pyspark.csv/
+    ├── monthly_distribution_summary.csv/
     ├── monthly_profiling_summary.csv/
     ├── vehicle_type_profiling.csv/
     └── driver_type_profiling.csv/
@@ -195,7 +195,7 @@ The system generates comprehensive data including:
 
 ### Final Output
 - **inforce_monthly_view.csv**: Monthly snapshot with driver-vehicle assignment records
-- **monthly_distribution_summary.csv**: Monthly statistics and distributions
+- **monthly_distribution_summary.csv/**: Monthly statistics with major change indicators
 
 ### Data Features
 - Policy information with expiry dates and client tenure tracking
@@ -232,6 +232,26 @@ The system generates comprehensive data including:
 - Vehicle type factors
 - Multi-vehicle discounts
 - Annual inflation adjustments
+
+### Driver Assignment Logic (Corrected)
+**✅ FIXED**: Vehicle substitution logic now uses proper assignment rules
+
+**Corrected Rules:**
+- **Each vehicle gets exactly one driver** (default - no secondary assignments)
+- **Secondary assignments only when**: teen driver present (≤24) OR more drivers than vehicles
+- **Multiple vehicle assignments only when**: more vehicles than drivers
+- **Every driver must be assigned to at least 1 vehicle**
+- **No unassigned drivers or vehicles**
+
+**Fixed Issues:**
+- ✅ **Vehicle substitution bug**: Fixed incorrect assignment logic during vehicle substitutions
+- ✅ **Major change detection**: Now correctly identifies logical vs illogical assignment changes
+- ✅ **Assignment consistency**: All assignment logic now follows the same corrected rules
+
+**Implementation:**
+- `src/create/build_initial_state.py`: Initial assignment logic
+- `src/create/apply_changes_proper.py`: Vehicle change assignment logic (FIXED)
+- `.cursor/rules/driver_assignment.mdc`: Detailed business rules documentation
 
 ## Dependencies
 
@@ -309,5 +329,5 @@ python -m src.maintain.family_type_manager mixed_families
 - **Clean output directory**: Remove temporary or test files after validation
 
 ### Standard Report Names
-- `monthly_distribution_summary.csv` - Monthly inforce statistics and distributions
+- `monthly_distribution_summary.csv/` - Monthly inforce statistics with major change indicators
 - `inforce_monthly_view.csv` - Complete monthly inforce data with driver-vehicle assignments

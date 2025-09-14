@@ -328,68 +328,172 @@ def _generate_driver_vehicle_assignments(families: List[Dict[str, Any]],
 def _assign_drivers_to_vehicles(vehicles: List[Dict[str, Any]], 
                                adult_drivers: List[Dict[str, Any]], 
                                teen_drivers: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Assign drivers to vehicles following the new assignment rules."""
+    """
+    Assign drivers to vehicles following the CORRECTED assignment rules.
+    
+    CORRECTED RULES:
+    1. Each vehicle gets exactly one driver (default - no secondary assignments)
+    2. Secondary assignments only when: teen driver present (≤24) OR more drivers than vehicles
+    3. Multiple vehicle assignments only when: more vehicles than drivers
+    4. Every driver must be assigned to at least 1 vehicle
+    """
     assignments = []
     assignment_counter = 1
     
-    # Rule: Every vehicle must have exactly 1 primary driver
-    # Rule: Each vehicle can have up to 1 secondary adult + 1 teen
+    # Combine all drivers and identify teens (age ≤24)
+    all_drivers = adult_drivers + teen_drivers
+    teen_drivers_actual = [d for d in all_drivers if d.get('age', 0) <= 24]
+    adult_drivers_actual = [d for d in all_drivers if d.get('age', 0) > 24]
     
-    for i, vehicle in enumerate(vehicles):
-        vehicle_no = vehicle["vehicle_no"]
+    num_drivers = len(all_drivers)
+    num_vehicles = len(vehicles)
+    has_teens = len(teen_drivers_actual) > 0
+    
+    print(f"    Assignment Logic: {num_drivers} drivers, {num_vehicles} vehicles, {len(teen_drivers_actual)} teens")
+    
+    # SCENARIO 1: More vehicles than drivers (sum(vehicles) > sum(drivers))
+    if num_vehicles > num_drivers:
+        print(f"    Scenario: More vehicles than drivers - assigning drivers to multiple vehicles")
         
-        # Assign primary driver (required)
-        if i < len(adult_drivers):
-            primary_driver = adult_drivers[i]
+        # Assign each driver to their own vehicle first
+        for i, driver in enumerate(all_drivers):
+            if i < num_vehicles:
+                vehicle_no = vehicles[i]["vehicle_no"]
+                assignments.append({
+                    "assignment_id": f"ASS{assignment_counter:08d}",
+                    "vehicle_no": vehicle_no,
+                    "driver_no": driver["driver_no"],
+                    "assignment_type": "primary",
+                    "exposure_factor": EXPOSURE_ALLOCATIONS["primary_solo"]
+                })
+                assignment_counter += 1
+        
+        # Assign remaining vehicles to drivers (one driver can be primary on multiple vehicles)
+        for i in range(num_drivers, num_vehicles):
+            vehicle_no = vehicles[i]["vehicle_no"]
+            # Assign to first driver (they become primary on multiple vehicles)
+            driver = all_drivers[0]
+            assignments.append({
+                "assignment_id": f"ASS{assignment_counter:08d}",
+                "vehicle_no": vehicle_no,
+                "driver_no": driver["driver_no"],
+                "assignment_type": "primary",
+                "exposure_factor": EXPOSURE_ALLOCATIONS["primary_solo"]
+            })
+            assignment_counter += 1
+    
+    # SCENARIO 2: More drivers than vehicles (sum(drivers) > sum(vehicles))
+    elif num_drivers > num_vehicles:
+        print(f"    Scenario: More drivers than vehicles - creating secondary assignments")
+        
+        # Assign primary drivers to vehicles
+        for i, vehicle in enumerate(vehicles):
+            vehicle_no = vehicle["vehicle_no"]
+            primary_driver = all_drivers[i]
+            
             assignments.append({
                 "assignment_id": f"ASS{assignment_counter:08d}",
                 "vehicle_no": vehicle_no,
                 "driver_no": primary_driver["driver_no"],
                 "assignment_type": "primary",
-                "exposure_factor": EXPOSURE_ALLOCATIONS["primary_solo"]  # Will be adjusted if secondary added
+                "exposure_factor": EXPOSURE_ALLOCATIONS["primary_solo"]
             })
             assignment_counter += 1
         
-        # Check if we need to assign secondary adult
-        remaining_adults = adult_drivers[i+1:] if i+1 < len(adult_drivers) else []
-        if remaining_adults and len(assignments) < len(adult_drivers):
-            secondary_adult = remaining_adults[0]
+        # Assign remaining drivers as secondary (prioritize teens for secondary)
+        remaining_drivers = all_drivers[num_vehicles:]
+        
+        for i, driver in enumerate(remaining_drivers):
+            # Assign to first vehicle (or distribute if multiple)
+            vehicle_no = vehicles[i % num_vehicles]["vehicle_no"]
+            
+            # Determine assignment type based on age
+            if driver.get('age', 0) <= 24:
+                assignment_type = "secondary_teen"
+                exposure_factor = EXPOSURE_ALLOCATIONS["teen_secondary"]
+            else:
+                assignment_type = "secondary_adult"
+                exposure_factor = EXPOSURE_ALLOCATIONS["secondary_adult"]
+            
             assignments.append({
                 "assignment_id": f"ASS{assignment_counter:08d}",
                 "vehicle_no": vehicle_no,
-                "driver_no": secondary_adult["driver_no"],
-                "assignment_type": "secondary_adult",
-                "exposure_factor": EXPOSURE_ALLOCATIONS["secondary_adult"]
+                "driver_no": driver["driver_no"],
+                "assignment_type": assignment_type,
+                "exposure_factor": exposure_factor
             })
             assignment_counter += 1
             
-            # Adjust primary driver exposure
+            # Adjust primary driver exposure to shared
             for assignment in assignments:
                 if (assignment["vehicle_no"] == vehicle_no and 
                     assignment["assignment_type"] == "primary"):
                     assignment["exposure_factor"] = EXPOSURE_ALLOCATIONS["primary_shared"]
                     break
-        
-        # Check if we need to assign teen
-        if teen_drivers:
-            teen_driver = teen_drivers[0]  # Assign first teen to this vehicle
-            assignments.append({
-                "assignment_id": f"ASS{assignment_counter:08d}",
-                "vehicle_no": vehicle_no,
-                "driver_no": teen_driver["driver_no"],
-                "assignment_type": "secondary_teen",
-                "exposure_factor": EXPOSURE_ALLOCATIONS["teen_secondary"]
-            })
-            assignment_counter += 1
     
-    # Handle remaining drivers (unassigned)
+    # SCENARIO 3: Equal drivers and vehicles (sum(drivers) = sum(vehicles))
+    else:
+        print(f"    Scenario: Equal drivers and vehicles - one driver per vehicle")
+        
+        # Check if we have teens - if so, create secondary assignments
+        if has_teens:
+            print(f"    Has teens - creating secondary teen assignments")
+            
+            # Assign each driver to their own vehicle as primary
+            for i, driver in enumerate(all_drivers):
+                vehicle_no = vehicles[i]["vehicle_no"]
+                assignments.append({
+                    "assignment_id": f"ASS{assignment_counter:08d}",
+                    "vehicle_no": vehicle_no,
+                    "driver_no": driver["driver_no"],
+                    "assignment_type": "primary",
+                    "exposure_factor": EXPOSURE_ALLOCATIONS["primary_solo"]
+                })
+                assignment_counter += 1
+            
+            # Assign teens as secondary to first vehicle
+            for teen in teen_drivers_actual:
+                vehicle_no = vehicles[0]["vehicle_no"]
+                assignments.append({
+                    "assignment_id": f"ASS{assignment_counter:08d}",
+                    "vehicle_no": vehicle_no,
+                    "driver_no": teen["driver_no"],
+                    "assignment_type": "secondary_teen",
+                    "exposure_factor": EXPOSURE_ALLOCATIONS["teen_secondary"]
+                })
+                assignment_counter += 1
+                
+                # Adjust primary driver exposure to shared
+                for assignment in assignments:
+                    if (assignment["vehicle_no"] == vehicle_no and 
+                        assignment["assignment_type"] == "primary"):
+                        assignment["exposure_factor"] = EXPOSURE_ALLOCATIONS["primary_shared"]
+                        break
+        
+        else:
+            print(f"    No teens - simple one-to-one assignment")
+            
+            # Simple one-to-one assignment: each driver gets their own vehicle
+            for i, driver in enumerate(all_drivers):
+                vehicle_no = vehicles[i]["vehicle_no"]
+                assignments.append({
+                    "assignment_id": f"ASS{assignment_counter:08d}",
+                    "vehicle_no": vehicle_no,
+                    "driver_no": driver["driver_no"],
+                    "assignment_type": "primary",
+                    "exposure_factor": EXPOSURE_ALLOCATIONS["primary_solo"]
+                })
+                assignment_counter += 1
+    
+    # Validate that all drivers are assigned
     assigned_drivers = set()
     for assignment in assignments:
         assigned_drivers.add(assignment["driver_no"])
     
-    # Check for unassigned adults
-    for driver in adult_drivers:
+    # Check for any unassigned drivers (should not happen with corrected logic)
+    for driver in all_drivers:
         if driver["driver_no"] not in assigned_drivers:
+            print(f"    WARNING: Unassigned driver {driver['driver_no']} - this should not happen!")
             assignments.append({
                 "assignment_id": f"ASS{assignment_counter:08d}",
                 "vehicle_no": "UNASSIGNED",
@@ -399,18 +503,7 @@ def _assign_drivers_to_vehicles(vehicles: List[Dict[str, Any]],
             })
             assignment_counter += 1
     
-    # Check for unassigned teens
-    for driver in teen_drivers:
-        if driver["driver_no"] not in assigned_drivers:
-            assignments.append({
-                "assignment_id": f"ASS{assignment_counter:08d}",
-                "vehicle_no": "UNASSIGNED",
-                "driver_no": driver["driver_no"],
-                "assignment_type": "unassigned",
-                "exposure_factor": 0.0
-            })
-            assignment_counter += 1
-    
+    print(f"    Created {len(assignments)} assignments")
     return assignments
 
 

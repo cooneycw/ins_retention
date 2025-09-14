@@ -1,0 +1,130 @@
+---
+description: Driver Assignment Rules - Corrected Business Logic
+globs: **/*.py, **/*.csv, **/*.md
+---
+
+# Driver Assignment Rules - Corrected Business Logic
+
+## Core Assignment Principles
+
+### Rule 1: One Driver Per Vehicle (Default)
+- **Each vehicle gets exactly one driver** as the primary assignment
+- **No secondary assignments** unless specific conditions are met
+
+### Rule 2: Secondary Assignments Only When:
+1. **Teen Driver Present**: There is a driver ≤24 years old (teen driver)
+2. **Driver Surplus**: sum(drivers) > sum(vehicles) (more drivers than vehicles)
+
+### Rule 3: Multiple Vehicle Assignments Only When:
+- **Vehicle Surplus**: sum(vehicles) > sum(drivers) (more vehicles than drivers)
+- **One driver can be primary on multiple vehicles** in this case only
+
+## Assignment Scenarios
+
+### Scenario 1: 2 Drivers, 2 Vehicles (No Teens)
+**CORRECT Assignment:**
+- Vehicle 1: Driver 1 (Primary)
+- Vehicle 2: Driver 2 (Primary)
+
+**INCORRECT Assignment:**
+- Vehicle 1: Driver 1 (Primary) + Driver 2 (Secondary Adult)
+- Vehicle 2: Driver 2 (Primary)
+
+### Scenario 2: 2 Drivers, 2 Vehicles (With Teen ≤24)
+**CORRECT Assignment:**
+- Vehicle 1: Driver 1 (Primary) + Teen Driver (Secondary Teen)
+- Vehicle 2: Driver 2 (Primary)
+
+### Scenario 3: 3 Drivers, 2 Vehicles
+**CORRECT Assignment:**
+- Vehicle 1: Driver 1 (Primary) + Driver 3 (Secondary Adult)
+- Vehicle 2: Driver 2 (Primary)
+
+### Scenario 4: 2 Drivers, 3 Vehicles
+**CORRECT Assignment:**
+- Vehicle 1: Driver 1 (Primary)
+- Vehicle 2: Driver 2 (Primary)
+- Vehicle 3: Driver 1 (Primary) - *Same driver on multiple vehicles*
+
+### Scenario 5: 3 Drivers, 3 Vehicles
+**CORRECT Assignment:**
+- Vehicle 1: Driver 1 (Primary)
+- Vehicle 2: Driver 2 (Primary)
+- Vehicle 3: Driver 3 (Primary)
+
+## Implementation Requirements
+
+### Current Issues to Fix:
+1. **Remove incorrect secondary_adult assignments** when sum(drivers) = sum(vehicles) and no teens
+2. **Implement proper teen detection** (age ≤24) for secondary assignments
+3. **Fix multiple vehicle assignments** to only occur when sum(vehicles) > sum(drivers)
+
+### Code Changes Needed:
+- **File**: `src/create/build_initial_state.py`
+- **Function**: `_assign_drivers_to_vehicles()`
+- **Logic**: Rewrite assignment algorithm to follow these rules
+
+### Validation Rules:
+- **No driver should be assigned to multiple vehicles** unless sum(vehicles) > sum(drivers)
+- **No secondary assignments** unless teen present OR driver surplus
+- **Every vehicle must have exactly one primary driver**
+- **Every driver must be assigned to at least one vehicle**
+
+## Business Logic Examples
+
+### Example 1: Couple with 2 Vehicles
+**Family**: 2 adults, 0 teens, 2 vehicles
+**Assignment**: Each adult gets their own vehicle
+**Exposure**: Driver 1 (1.0), Driver 2 (1.0)
+
+### Example 2: Couple with Teen, 2 Vehicles
+**Family**: 2 adults, 1 teen, 2 vehicles
+**Assignment**: One adult gets both vehicles, teen gets secondary on one
+**Exposure**: Driver 1 (1.0 + 0.6), Driver 2 (1.0), Teen (0.35)
+
+### Example 3: Couple Buys Third Vehicle
+**Family**: 2 adults, 0 teens, 3 vehicles
+**Assignment**: One adult gets two vehicles, other gets one
+**Exposure**: Driver 1 (1.0 + 1.0), Driver 2 (1.0)
+
+## Data Quality Impact
+
+### Current Problems:
+- **High major change rates** due to incorrect initial assignments
+- **Illogical secondary assignments** in simple 2-driver, 2-vehicle scenarios
+- **Assignment logic violations** that don't reflect real-world insurance practices
+
+### Expected Improvements:
+- **Realistic assignment patterns** that match insurance industry standards
+- **Lower major change rates** with only legitimate changes flagged
+- **Proper exposure calculations** based on correct assignment logic
+
+## Testing Scenarios
+
+### Test Case 1: Policy 00000047
+**Current (Wrong)**: Mark assigned to both vehicles
+**Should Be**: Paul on Vehicle 1, Mark on Vehicle 2
+**Major Change**: Only when Vehicle 3 is added (legitimate change)
+
+### Test Case 2: Teen Driver Policy
+**Should Have**: Secondary teen assignments when age ≤24
+**Should Not Have**: Secondary adult assignments for adult drivers
+
+### Test Case 3: Vehicle Addition
+**Should Show**: One driver becoming primary on additional vehicle
+**Should Not Show**: Incorrect secondary assignments
+
+## Implementation Priority
+
+1. **Document rules** ✅ (This document)
+2. **Fix assignment logic** in `build_initial_state.py`
+3. **Rerun data generation** with corrected logic
+4. **Validate major change detection** with realistic data
+5. **Update Policy Viewer** to show corrected assignments
+
+## Success Criteria
+
+- **Major change rates** should be much lower (realistic levels)
+- **Assignment patterns** should match insurance industry standards
+- **No illogical secondary assignments** in simple scenarios
+- **Proper exposure calculations** based on correct assignments

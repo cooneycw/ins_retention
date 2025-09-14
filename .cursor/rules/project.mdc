@@ -20,6 +20,7 @@ This project simulates an insurance policy system with a family-centric approach
 - ✅ **Dynamic Client Tenure** - Client tenure calculated dynamically at each report build date
 - ✅ **Enhanced Reporting** - Comprehensive PySpark-based distribution analysis and data profiling
 - ✅ **Git Repository Management** - Proper .gitignore excluding generated CSV files and data directories
+- ✅ **Corrected Driver Assignment Logic** - Fixed vehicle substitution logic to use proper assignment rules
 
 ## Environment Requirements
 - **Conda Environment**: Always use the `retention` conda environment
@@ -41,8 +42,7 @@ This project simulates an insurance policy system with a family-centric approach
 ### Output Files (Final Products)
 - `inforce_monthly_view.csv` - Monthly snapshot with driver-vehicle assignment records (end-of-month status)
 - `inforce_monthly_view_sorted/` - PySpark-generated sorted DataFrame for viewing with editors
-- `monthly_distribution_summary.csv` - Pandas-based monthly statistics and distributions analysis (fallback)
-- `monthly_distribution_summary_pyspark.csv/` - PySpark-based monthly statistics with major change indicators
+- `monthly_distribution_summary.csv/` - PySpark-based monthly statistics with major change indicators
 - `monthly_profiling_summary.csv/` - PySpark-based data profiling report
 - `vehicle_type_profiling.csv/` - PySpark-based vehicle type analysis
 - `driver_type_profiling.csv/` - PySpark-based driver type analysis
@@ -62,11 +62,20 @@ This project simulates an insurance policy system with a family-centric approach
 - **Family with Teens**: 2 adults, 1-2 teens, 1-3 vehicles
 
 ### Driver Assignment Rules
-- **Every vehicle must have exactly 1 primary driver** (required)
-- **Each vehicle can have up to 1 secondary adult + 1 teen** (optional)
-- **Maximum: 3 drivers per vehicle** (1 primary + 1 secondary adult + 1 teen)
-- **All drivers must be assigned to at least 1 vehicle**
+**✅ CORRECTED AND IMPLEMENTED: See `.cursor/rules/driver_assignment.mdc` for detailed business logic**
+
+**CORRECTED RULES (NOW IMPLEMENTED):**
+- **Each vehicle gets exactly one driver** (default - no secondary assignments)
+- **Secondary assignments only when**: teen driver present (≤24) OR more drivers than vehicles
+- **Multiple vehicle assignments only when**: more vehicles than drivers
+- **Every driver must be assigned to at least 1 vehicle**
 - **No unassigned drivers or vehicles**
+- **Vehicle substitution logic**: Now uses corrected assignment rules in `apply_changes_proper.py`
+
+**FIXED ISSUES:**
+- ✅ **Vehicle substitution bug**: Fixed incorrect assignment logic during vehicle substitutions
+- ✅ **Major change detection**: Now correctly identifies logical vs illogical assignment changes
+- ✅ **Assignment consistency**: All assignment logic now follows the same corrected rules
 
 ### Exposure Allocation
 - **Primary solo**: 1.0 exposure
@@ -228,7 +237,7 @@ The inforce view must be sorted by: policy, policy_expiry_date, vehicle_no, driv
 - **Reusable reports**: Use the same file names for iterative analysis to avoid clutter
 - **Clean output directory**: Remove temporary or test files after validation
 - **Standard report names**:
-  - `monthly_distribution_summary.csv` - Monthly inforce statistics and distributions
+  - `monthly_distribution_summary.csv/` - Monthly inforce statistics with major change indicators
   - `inforce_monthly_view.csv` - Complete monthly inforce data
 
 ## Usage Examples

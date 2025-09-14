@@ -9,7 +9,8 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
     col, lag, when, isnan, isnull, sum as spark_sum, count, 
     countDistinct, avg, max as spark_max, min as spark_min,
-    row_number, window, lit, coalesce, abs as spark_abs
+    row_number, window, lit, coalesce, abs as spark_abs,
+    concat, collect_set
 )
 from pyspark.sql.window import Window
 from pyspark.sql.types import BooleanType
@@ -40,6 +41,9 @@ class MajorChangeAnalysis:
         """
         Detect major changes for each policy-month combination.
         
+        Major changes are detected by comparing the set of driver-vehicle assignments
+        between consecutive months for each policy.
+        
         Args:
             df: Input DataFrame with inforce data
             
@@ -48,71 +52,38 @@ class MajorChangeAnalysis:
         """
         print("  - Detecting major changes using PySpark...")
         
+        # Create a unique identifier for each driver-vehicle assignment
+        df_with_assignment_id = df.withColumn(
+            "assignment_id", 
+            concat(col("vehicle_no"), lit("_"), col("driver_no"))
+        )
+        
+        # Group by policy and month to get the set of assignments for each month
+        monthly_assignments = df_with_assignment_id.groupBy("policy", "inforce_yy", "inforce_mm") \
+            .agg(collect_set("assignment_id").alias("assignments"))
+        
         # Define window for policy-level ordering
         policy_window = Window.partitionBy("policy").orderBy("inforce_yy", "inforce_mm")
         
-        # Add row number for each policy's records
-        df_with_row_num = df.withColumn("row_num", row_number().over(policy_window))
-        
-        # Add lag columns for comparison with previous month
-        df_with_lags = df_with_row_num.withColumn(
-            "prev_vehicle_no", lag("vehicle_no", 1).over(policy_window)
-        ).withColumn(
-            "prev_vehicle_vin", lag("vehicle_vin", 1).over(policy_window)
-        ).withColumn(
-            "prev_vehicle_type", lag("vehicle_type", 1).over(policy_window)
-        ).withColumn(
-            "prev_model_year", lag("model_year", 1).over(policy_window)
-        ).withColumn(
-            "prev_driver_no", lag("driver_no", 1).over(policy_window)
-        ).withColumn(
-            "prev_driver_license_no", lag("driver_license_no", 1).over(policy_window)
-        ).withColumn(
-            "prev_driver_name", lag("driver_name", 1).over(policy_window)
-        ).withColumn(
-            "prev_driver_type", lag("driver_type", 1).over(policy_window)
-        ).withColumn(
-            "prev_driver_age", lag("driver_age", 1).over(policy_window)
+        # Add lag column to compare with previous month's assignments
+        monthly_assignments_with_lag = monthly_assignments.withColumn(
+            "prev_assignments", lag("assignments", 1).over(policy_window)
         )
         
-        # Detect major changes
-        df_with_changes = df_with_lags.withColumn(
-            "vehicle_change",
-            when(col("row_num") == 1, lit(True))  # First record is always a change
-            .when(
-                (col("vehicle_no") != col("prev_vehicle_no")) |
-                (col("vehicle_vin") != col("prev_vehicle_vin")) |
-                (col("vehicle_type") != col("prev_vehicle_type")) |
-                (col("model_year") != col("prev_model_year")),
-                lit(True)
-            ).otherwise(lit(False))
-        ).withColumn(
-            "driver_change",
-            when(col("row_num") == 1, lit(True))  # First record is always a change
-            .when(
-                (col("driver_no") != col("prev_driver_no")) |
-                (col("driver_license_no") != col("prev_driver_license_no")) |
-                (col("driver_name") != col("prev_driver_name")) |
-                (col("driver_type") != col("prev_driver_type")) |
-                (spark_abs(col("driver_age") - col("prev_driver_age")) > 1),  # Significant age change
-                lit(True)
-            ).otherwise(lit(False))
-        )
-        
-        # Combine changes into major_change flag
-        df_with_major_changes = df_with_changes.withColumn(
+        # Detect major changes by comparing assignment sets
+        monthly_changes = monthly_assignments_with_lag.withColumn(
             "major_change",
-            when(col("vehicle_change") | col("driver_change"), lit(True))
-            .otherwise(lit(False))
+            when(col("prev_assignments").isNull(), lit(False))  # First month is not a change
+            .when(col("assignments") != col("prev_assignments"), lit(True))  # Different assignments = change
+            .otherwise(lit(False))  # Same assignments = no change
         )
         
-        # Drop helper columns
-        final_df = df_with_major_changes.drop(
-            "row_num", "prev_vehicle_no", "prev_vehicle_vin", "prev_vehicle_type",
-            "prev_model_year", "prev_driver_no", "prev_driver_license_no",
-            "prev_driver_name", "prev_driver_type", "prev_driver_age",
-            "vehicle_change", "driver_change"
-        )
+        # Join back to original DataFrame to add major_change flag to all records
+        final_df = df_with_assignment_id.join(
+            monthly_changes.select("policy", "inforce_yy", "inforce_mm", "major_change"),
+            ["policy", "inforce_yy", "inforce_mm"],
+            "left"
+        ).drop("assignment_id")  # Remove the temporary assignment_id column
         
         print("  - Major change detection completed")
         return final_df

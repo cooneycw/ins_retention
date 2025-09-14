@@ -57,7 +57,7 @@ policies:
         4: 0.2
 family_types:
   single_person:
-    percentage: 1.0
+    percentage: 0.0
     adults: 1
     teens: 0
     vehicles: 1
@@ -70,7 +70,7 @@ family_types:
     can_substitute_vehicles: true
     max_vehicles: 3
   couple:
-    percentage: 0.0
+    percentage: 1.0
     adults: 2
     teens: 0
     vehicles:
@@ -80,7 +80,7 @@ family_types:
     - 0.7
     - 0.3
     can_add_adults: false
-    can_add_teens: true
+    can_add_teens: false
     can_remove_adults: true
     can_remove_teens: false
     can_add_vehicles: true

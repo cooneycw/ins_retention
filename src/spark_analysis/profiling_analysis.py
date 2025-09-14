@@ -229,6 +229,10 @@ class ProfilingAnalysis:
         premium_stats = df.select("premium_paid").describe().collect()
         premium_summary = {row['summary']: row['premium_paid'] for row in premium_stats}
         
+        # Add median using approxQuantile (PySpark's describe() doesn't include median)
+        median_premium = df.approxQuantile("premium_paid", [0.5], 0.25)[0]
+        premium_summary['50%'] = median_premium
+        
         # Policy metrics
         policy_metrics = df.groupBy("policy").agg(
             count("*").alias("record_count"),

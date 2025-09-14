@@ -103,7 +103,7 @@ class DistributionAnalysis:
         tenure_stats = df.select("client_tenure_days").describe().collect()
         tenure_summary = {row['summary']: row['client_tenure_days'] for row in tenure_stats}
         mean_tenure = float(tenure_summary.get('mean', 0)) if tenure_summary.get('mean', 'null') != 'null' else 0
-        median_tenure = float(tenure_summary.get('50%', 0)) if tenure_summary.get('50%', 'null') != 'null' else 0
+        median_tenure = df.approxQuantile("client_tenure_days", [0.5], 0.25)[0]
         print(f"    Client tenure - Mean: {mean_tenure:.0f} days, "
               f"Median: {median_tenure:.0f} days")
     
@@ -221,8 +221,10 @@ class DistributionAnalysis:
         premium_stats = df.select("premium_paid").describe().collect()
         premium_summary = {row['summary']: row['premium_paid'] for row in premium_stats}
         
+        # Calculate median using approxQuantile (PySpark's describe() doesn't include median)
+        median_premium = df.approxQuantile("premium_paid", [0.5], 0.25)[0]
+        
         mean_premium = float(premium_summary.get('mean', 0)) if premium_summary.get('mean', 'null') != 'null' else 0
-        median_premium = float(premium_summary.get('50%', 0)) if premium_summary.get('50%', 'null') != 'null' else 0
         min_premium = float(premium_summary.get('min', 0)) if premium_summary.get('min', 'null') != 'null' else 0
         max_premium = float(premium_summary.get('max', 0)) if premium_summary.get('max', 'null') != 'null' else 0
         
@@ -399,7 +401,7 @@ class DistributionAnalysis:
             )
         
         # Save to CSV
-        output_file = output_dir / "monthly_distribution_summary_pyspark.csv"
+        output_file = output_dir / "monthly_distribution_summary.csv"
         monthly_stats.coalesce(1).write \
             .mode("overwrite") \
             .option("header", "true") \

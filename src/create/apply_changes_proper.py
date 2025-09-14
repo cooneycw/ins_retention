@@ -193,22 +193,8 @@ def _add_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
     
     master_data['vehicles'].append(new_vehicle)
     
-    # Create assignment for the new vehicle (primary driver gets it)
-    primary_driver = next(d for d in master_data['drivers'] 
-                         if d['family_id'] == family_id and d['driver_type'] == 'adult')
-    
-    new_assignment = {
-        'assignment_id': f"ASS{family_id}{next_vehicle_no:03d}",
-        'family_id': family_id,
-        'vehicle_no': str(next_vehicle_no),
-        'driver_no': primary_driver['driver_no'],
-        'assignment_type': 'primary',
-        'exposure_factor': '1.0',
-        'effective_date': current_date.strftime('%Y-%m-%d'),
-        'status': 'active'
-    }
-    
-    master_data['assignments'].append(new_assignment)
+    # Apply corrected driver assignment logic
+    _reassign_drivers_to_vehicles(master_data, family_id, current_date)
     
     return {
         'change_type': 'vehicle_addition',
@@ -266,6 +252,9 @@ def _remove_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
             'vehicle_type': vehicle_to_remove['vehicle_type'],
             'reason': 'all_vehicles_removed'
         }
+    
+    # Reassign drivers to remaining vehicles
+    _reassign_drivers_to_vehicles(master_data, family_id, current_date)
     
     return {
         'change_type': 'vehicle_removal',
@@ -330,33 +319,8 @@ def _substitute_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
     # Replace the old vehicle
     old_vehicle.update(new_vehicle)
     
-    # Update existing assignment (don't create a new one)
-    primary_driver = next(d for d in master_data['drivers'] 
-                         if d['family_id'] == family_id and d['driver_type'] == 'adult')
-    
-    # Find and update the existing assignment (or create new one if coverage gap)
-    assignment_found = False
-    for assignment in master_data['assignments']:
-        if (assignment['family_id'] == family_id and 
-            assignment['vehicle_no'] == old_vehicle_no and
-            assignment['status'] == 'active'):
-            assignment['status'] = 'removed'
-            assignment_found = True
-            break
-    
-    # If no active assignment found (due to coverage gap), create a new one
-    if not assignment_found:
-        new_assignment = {
-            'assignment_id': f"ASS{family_id}{old_vehicle_no}",
-            'family_id': family_id,
-            'vehicle_no': old_vehicle_no,
-            'driver_no': primary_driver['driver_no'],
-            'assignment_type': 'primary',
-            'exposure_factor': '1.0',
-            'effective_date': current_date.strftime('%Y-%m-%d'),
-            'status': 'active'
-        }
-        master_data['assignments'].append(new_assignment)
+    # Apply corrected driver assignment logic
+    _reassign_drivers_to_vehicles(master_data, family_id, current_date)
     
     return {
         'change_type': 'vehicle_substitution',
@@ -369,6 +333,104 @@ def _substitute_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
         'tenure_reset': has_coverage_gap and CONFIG['changes']['vehicle_changes']['substitutions']['tenure_reset_on_gap'],
         'reason': random.choice(CONFIG['changes']['vehicle_changes']['substitutions']['reasons'])
     }
+
+
+def _reassign_drivers_to_vehicles(master_data: Dict[str, List[Dict[str, Any]]], 
+                                 family_id: str, current_date: datetime) -> None:
+    """Reassign drivers to vehicles using the corrected assignment logic."""
+    # Get active vehicles and drivers for this family
+    active_vehicles = [v for v in master_data['vehicles'] 
+                      if v['family_id'] == family_id and v['status'] == 'active']
+    active_drivers = [d for d in master_data['drivers'] 
+                     if d['family_id'] == family_id and d['status'] == 'active']
+    
+    if not active_vehicles or not active_drivers:
+        return
+    
+    # Remove all existing active assignments for this family
+    for assignment in master_data['assignments']:
+        if (assignment['family_id'] == family_id and 
+            assignment['status'] == 'active'):
+            assignment['status'] = 'removed'
+    
+    # Apply corrected assignment logic
+    num_vehicles = len(active_vehicles)
+    num_drivers = len(active_drivers)
+    
+    # Sort drivers by age (youngest first for teen detection)
+    active_drivers.sort(key=lambda x: int(x['age']))
+    
+    # Check if there are any teen drivers (age <= 24)
+    has_teens = any(int(d['age']) <= 24 for d in active_drivers)
+    
+    # Assignment logic based on corrected rules
+    if num_drivers <= num_vehicles:
+        # Each driver gets their own vehicle
+        for i, driver in enumerate(active_drivers):
+            vehicle = active_vehicles[i]
+            assignment_type = 'primary'
+            
+            # Create new assignment
+            new_assignment = {
+                'assignment_id': f"ASS{family_id}{vehicle['vehicle_no']}{driver['driver_no']}",
+                'family_id': family_id,
+                'vehicle_no': vehicle['vehicle_no'],
+                'driver_no': driver['driver_no'],
+                'assignment_type': assignment_type,
+                'exposure_factor': '1.0',
+                'effective_date': current_date.strftime('%Y-%m-%d'),
+                'status': 'active'
+            }
+            master_data['assignments'].append(new_assignment)
+    
+    else:  # num_drivers > num_vehicles
+        # Some drivers will be assigned to multiple vehicles
+        for i, vehicle in enumerate(active_vehicles):
+            # Primary driver (first driver)
+            primary_driver = active_drivers[i % num_drivers]
+            assignment_type = 'primary'
+            
+            # Create primary assignment
+            new_assignment = {
+                'assignment_id': f"ASS{family_id}{vehicle['vehicle_no']}{primary_driver['driver_no']}",
+                'family_id': family_id,
+                'vehicle_no': vehicle['vehicle_no'],
+                'driver_no': primary_driver['driver_no'],
+                'assignment_type': assignment_type,
+                'exposure_factor': '1.0',
+                'effective_date': current_date.strftime('%Y-%m-%d'),
+                'status': 'active'
+            }
+            master_data['assignments'].append(new_assignment)
+            
+            # Secondary driver if there are teens or more drivers than vehicles
+            if has_teens or num_drivers > num_vehicles:
+                # Find a different driver for secondary assignment
+                secondary_driver = None
+                for driver in active_drivers:
+                    if driver['driver_no'] != primary_driver['driver_no']:
+                        secondary_driver = driver
+                        break
+                
+                if secondary_driver:
+                    # Determine assignment type based on driver age
+                    if int(secondary_driver['age']) <= 24:
+                        assignment_type = 'secondary_teen'
+                    else:
+                        assignment_type = 'secondary_adult'
+                    
+                    # Create secondary assignment
+                    new_assignment = {
+                        'assignment_id': f"ASS{family_id}{vehicle['vehicle_no']}{secondary_driver['driver_no']}",
+                        'family_id': family_id,
+                        'vehicle_no': vehicle['vehicle_no'],
+                        'driver_no': secondary_driver['driver_no'],
+                        'assignment_type': assignment_type,
+                        'exposure_factor': '0.5',
+                        'effective_date': current_date.strftime('%Y-%m-%d'),
+                        'status': 'active'
+                    }
+                    master_data['assignments'].append(new_assignment)
 
 
 def _apply_family_evolution(master_data: Dict[str, List[Dict[str, Any]]], 
