@@ -7,19 +7,23 @@ Compares assignment premiums (stored at assignment time) with inforce premiums
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from pathlib import Path
 
 def load_data():
     """Load all required data files"""
     print("Loading data files...")
     
+    # Get the project root directory (two levels up from this file)
+    project_root = Path(__file__).parent.parent.parent
+    
     # Load inforce data
-    inforce_df = pd.read_csv('data/inforce/inforce_monthly_view.csv')
+    inforce_df = pd.read_csv(project_root / 'data/inforce/inforce_monthly_view.csv')
     
     # Load assignments data with premiums
-    assignments_df = pd.read_csv('data/policy_system/driver_vehicle_assignments.csv')
+    assignments_df = pd.read_csv(project_root / 'data/policy_system/driver_vehicle_assignments.csv')
     
     # Load policies data
-    policies_df = pd.read_csv('data/policy_system/policies_master.csv')
+    policies_df = pd.read_csv(project_root / 'data/policy_system/policies_master.csv')
     
     print(f"Loaded {len(inforce_df)} inforce records")
     print(f"Loaded {len(assignments_df)} assignment records")
@@ -57,10 +61,7 @@ def calculate_assignment_annual_premium(assignments_df, policies_df, policy_no, 
     family_assignments = assignments_df[
         (assignments_df['family_id'] == family_id) &
         (assignments_df['effective_date'] <= year_end) &
-        (
-            (assignments_df['end_date'] == '') | 
-            (assignments_df['end_date'] >= year_start)
-        )
+        (assignments_df['status'] == 'active')
     ]
     
     if len(family_assignments) == 0:
@@ -179,10 +180,7 @@ def analyze_specific_policies(inforce_df, assignments_df, policies_df, policy_nu
         family_assignments = assignments_df[
             (assignments_df['family_id'] == family_id) &
             (assignments_df['effective_date'] <= year_end) &
-            (
-                (assignments_df['end_date'] == '') | 
-                (assignments_df['end_date'] >= year_start)
-            )
+            (assignments_df['status'] == 'active')
         ]
         
         print(f"\\nActive Assignments for {year}:")
