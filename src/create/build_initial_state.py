@@ -19,6 +19,12 @@ CONFIG_PATH = Path("config/policy_system_config.yaml")
 with open(CONFIG_PATH, 'r') as f:
     CONFIG = yaml.safe_load(f)
 
+# Import helper function from apply_changes_proper
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent))
+from apply_changes_proper import _calculate_assignment_premium_for_storage
+
 # Extract constants from config
 START_DATE = datetime.strptime(CONFIG['date_range']['start_date'], '%Y-%m-%d')
 END_DATE = datetime.strptime(CONFIG['date_range']['end_date'], '%Y-%m-%d')
@@ -243,6 +249,7 @@ def _generate_driver_data(families: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 "driver_name": driver_name,
                 "driver_type": "adult",
                 "age": age,
+                "age_at_issuance": age,  # For initial drivers, age_at_issuance = current age
                 "birthday": birthday.strftime("%Y-%m-%d"),
                 "effective_date": effective_date,
                 "status": "active"
@@ -278,6 +285,7 @@ def _generate_driver_data(families: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 "driver_name": driver_name,
                 "driver_type": "teen",
                 "age": age,
+                "age_at_issuance": age,  # For initial drivers, age_at_issuance = current age
                 "birthday": birthday.strftime("%Y-%m-%d"),
                 "effective_date": effective_date,
                 "status": "active"
@@ -320,6 +328,16 @@ def _generate_driver_vehicle_assignments(families: List[Dict[str, Any]],
                 "effective_date": family["start_date"],
                 "status": "active"
             }
+            # Calculate and store the annual premium for this assignment
+            from datetime import datetime
+            effective_date = datetime.strptime(family["start_date"], '%Y-%m-%d')
+            annual_premium_paid = _calculate_assignment_premium_for_storage(assignment_record,
+                                                                         next(v for v in vehicles if v["family_id"] == family_id and v["vehicle_no"] == assignment["vehicle_no"]),
+                                                                         next(d for d in drivers if d["family_id"] == family_id and d["driver_no"] == assignment["driver_no"]),
+                                                                         effective_date,
+                                                                         'existing_assignment')
+            assignment_record['annual_premium_rate'] = round(annual_premium_paid / float(assignment_record['exposure_factor']), 2)
+            assignment_record['annual_premium_paid'] = annual_premium_paid
             assignments.append(assignment_record)
     
     return assignments
@@ -649,10 +667,7 @@ def _calculate_single_policy_premium(assignments: List[Dict[str, Any]],
             driver_type_factor = calc_config["driver_type_factors"].get(driver_type, 1.0)
             assignment_premium *= driver_type_factor
             
-            # Add some random variation
-            std_dev = CONFIG['policies']['premium']['standard_deviation']
-            variation = random.normalvariate(0, std_dev * 0.1)  # 10% of std dev for variation
-            assignment_premium += variation
+            # No random variation - deterministic premium calculation
             
             total_premium += assignment_premium
     

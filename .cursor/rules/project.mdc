@@ -25,6 +25,8 @@ This project simulates an insurance policy system with a family-centric approach
 - ✅ **Data Type Consistency** - Fixed string/int/float casting issues in premium calculations
 - ✅ **Premium Validation** - Created comprehensive validator to compare policy system vs inforce premiums
 - ✅ **Inforce Premium Trace Investigation** - Identified that inforce premiums are not updating with policy modifications
+- ✅ **Premium Reconciliation** - Fixed policy system premium storage to match inforce calculations (Policy 1 reconciliation within 1% tolerance)
+- ✅ **Premium Storage Understanding** - Inforce premiums stored on annual basis, policy system premium represents current year's amount
 
 ## Environment Requirements
 - **Conda Environment**: Always use the `retention` conda environment
@@ -146,7 +148,7 @@ Required fields:
 - `assignment_type` - Driver-vehicle assignment type
 - `exposure_factor` - Exposure allocation factor
 - `driver_age` - Driver age
-- `premium_paid` - Premium amount
+- `premium_paid` - Premium amount (shown on annual basis - divide by 12 for monthly)
 - `major_change` - Major change flag (added by PySpark analysis)
 
 **Sorting Requirements:**
@@ -175,6 +177,9 @@ The inforce view must be sorted by: policy, policy_expiry_date, vehicle_no, driv
 - **Premium Recalculation**: Premiums are recalculated when exposure factors change during driver reassignments
 - **Data Type Consistency**: All premium calculations use proper int/float casting for driver ages and exposure factors
 - **Random Component Disabled**: Premium calculations use deterministic algorithm without random variation
+- **Premium Storage**: Inforce premiums stored on annual basis - any monthly calculation requires 1/12 reduction
+- **Policy System Premium**: Represents the current year's annual premium amount (not historical progression)
+- **Reconciliation Logic**: Policy system premium should match inforce annual total for the target reconciliation year
 
 ## Family Type Configuration
 

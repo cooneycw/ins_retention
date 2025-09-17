@@ -336,10 +336,10 @@ class PolicyViewer:
         # Policy summary
         policy_info = data.iloc[0]
         
-        # Format premium properly
-        premium = policy_info.get('premium_paid', 'N/A')
-        if premium != 'N/A' and pd.notna(premium):
-            premium_str = f"${float(premium):.2f}"
+        # Calculate total policy premium by summing all premium_paid values
+        total_premium = data['premium_paid'].sum()
+        if pd.notna(total_premium):
+            premium_str = f"${total_premium:.2f}"
         else:
             premium_str = 'N/A'
         
@@ -347,11 +347,28 @@ class PolicyViewer:
 Policy: {policy_info['policy']}
 Policy Expiry: {policy_info.get('policy_expiry_date', 'N/A')}
 Client Tenure: {policy_info.get('client_tenure_days', 'N/A')} days
-Premium Paid: {premium_str}
+Total Premium Paid: {premium_str}
 Inforce Date: {self.current_year}-{self.current_month:02d}
         """.strip()
         
         ttk.Label(scrollable_frame, text=info_text, font=("Arial", 12)).pack(pady=10, padx=10)
+        
+        # Add premium breakdown
+        if len(data) > 0:
+            breakdown_text = "Premium Breakdown:\n"
+            for _, row in data.iterrows():
+                driver_name = row.get('driver_name', 'N/A')
+                vehicle_no = row.get('vehicle_no', 'N/A')
+                premium_rate = row.get('premium_rate', 'N/A')
+                premium_paid = row.get('premium_paid', 'N/A')
+                exposure_factor = row.get('exposure_factor', 'N/A')
+                
+                if pd.notna(premium_rate) and pd.notna(premium_paid):
+                    breakdown_text += f"  {driver_name} (Vehicle {vehicle_no}): ${premium_rate:.2f} × {exposure_factor} = ${premium_paid:.2f}\n"
+                else:
+                    breakdown_text += f"  {driver_name} (Vehicle {vehicle_no}): N/A\n"
+            
+            ttk.Label(scrollable_frame, text=breakdown_text, font=("Arial", 10)).pack(pady=5, padx=10)
         
         # Pack canvas and scrollbar
         canvas.pack(side="left", fill="both", expand=True)
@@ -399,15 +416,28 @@ Inforce Date: {self.current_year}-{self.current_month:02d}
         assignments_frame = ttk.LabelFrame(paned_window, text="Driver/Vehicle Assignments", padding=5)
         paned_window.add(assignments_frame, weight=2)
         
-        assignments_columns = ['vehicle_no', 'driver_no', 'driver_name', 'driver_age', 'assignment_type', 'exposure_factor']
+        assignments_columns = ['vehicle_no', 'driver_no', 'driver_name', 'driver_age', 'assignment_type', 'exposure_factor', 'premium_rate', 'premium_paid']
         assignments_tree = ttk.Treeview(assignments_frame, columns=assignments_columns, show='headings', height=6)
         
         for col in assignments_columns:
             assignments_tree.heading(col, text=col.replace('_', ' ').title())
-            assignments_tree.column(col, width=120)
+            if col in ['premium_rate', 'premium_paid']:
+                assignments_tree.column(col, width=100)
+            else:
+                assignments_tree.column(col, width=100)
         
         for _, row in data.iterrows():
-            values = [str(row.get(col, 'N/A')) for col in assignments_columns]
+            values = []
+            for col in assignments_columns:
+                if col in ['premium_rate', 'premium_paid']:
+                    # Format premium values as currency
+                    val = row.get(col, 'N/A')
+                    if val != 'N/A' and val is not None:
+                        values.append(f"${float(val):.2f}")
+                    else:
+                        values.append('N/A')
+                else:
+                    values.append(str(row.get(col, 'N/A')))
             assignments_tree.insert('', 'end', values=values)
         
         assignments_scrollbar = ttk.Scrollbar(assignments_frame, orient="vertical", command=assignments_tree.yview)

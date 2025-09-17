@@ -56,6 +56,10 @@ def simulate_monthly_changes() -> None:
         if month == 1:
             _apply_annual_premium_increases(master_data, year)
         
+        # Check for policy renewals (when current date matches expiry date)
+        renewal_changes = _process_policy_renewals(master_data, current_date)
+        changes.extend(renewal_changes)
+        
         # Move to next month
         if month == 12:
             current_date = current_date.replace(year=year + 1, month=1)
@@ -339,13 +343,16 @@ def _substitute_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
     # Only reassign drivers if there was a coverage gap (assignments were removed)
     # For simple substitutions, keep existing driver assignments
     if has_coverage_gap:
-        _reassign_drivers_to_vehicles(master_data, family_id, current_date)
+        _reassign_drivers_to_vehicles(master_data, family_id, current_date, 'vehicle_substitution')
     else:
         # If no coverage gap, the vehicle is updated but assignments should remain
         # We need to make sure the vehicle_no still points to the same drivers
         # Since we're updating the vehicle in-place, the assignments should still be valid
         # and do not need to be recreated or changed.
         pass
+    
+    # Recalculate premiums after vehicle substitution (new vehicle type/year affects rates)
+    _recalculate_policy_premiums(master_data, family_id)
     
     return {
         'change_type': 'vehicle_substitution',
@@ -361,7 +368,8 @@ def _substitute_vehicle(master_data: Dict[str, List[Dict[str, Any]]],
 
 
 def _reassign_drivers_to_vehicles(master_data: Dict[str, List[Dict[str, Any]]], 
-                                 family_id: str, current_date: datetime) -> None:
+                                 family_id: str, current_date: datetime, 
+                                 assignment_type: str = 'driver_reassignment') -> None:
     """Reassign drivers to vehicles using the corrected assignment logic."""
     # Get active vehicles and drivers for this family
     active_vehicles = [v for v in master_data['vehicles'] 
@@ -406,6 +414,10 @@ def _reassign_drivers_to_vehicles(master_data: Dict[str, List[Dict[str, Any]]],
                 'end_date': '',
                 'status': 'active'
             }
+            # Calculate and store the annual premium for this assignment
+            annual_premium_paid = _calculate_assignment_premium_for_storage(new_assignment, vehicle, driver, current_date)
+            new_assignment['annual_premium_rate'] = round(annual_premium_paid / float(new_assignment['exposure_factor']), 2)
+            new_assignment['annual_premium_paid'] = annual_premium_paid
             master_data['assignments'].append(new_assignment)
     elif num_vehicles > num_drivers:
         # More vehicles than drivers → some drivers cover multiple vehicles (no secondary needed)
@@ -422,6 +434,10 @@ def _reassign_drivers_to_vehicles(master_data: Dict[str, List[Dict[str, Any]]],
                 'end_date': '',
                 'status': 'active'
             }
+            # Calculate and store the annual premium for this assignment
+            annual_premium_paid = _calculate_assignment_premium_for_storage(new_assignment, vehicle, primary_driver, current_date, assignment_type)
+            new_assignment['annual_premium_rate'] = round(annual_premium_paid / float(new_assignment['exposure_factor']), 2)
+            new_assignment['annual_premium_paid'] = annual_premium_paid
             master_data['assignments'].append(new_assignment)
     else:  # num_drivers > num_vehicles
         # More drivers than vehicles → primary per vehicle, optional secondary (per rules)
@@ -439,6 +455,10 @@ def _reassign_drivers_to_vehicles(master_data: Dict[str, List[Dict[str, Any]]],
                 'end_date': '',
                 'status': 'active'
             }
+            # Calculate and store the annual premium for this assignment
+            annual_premium_paid = _calculate_assignment_premium_for_storage(new_assignment, vehicle, primary_driver, current_date, assignment_type)
+            new_assignment['annual_premium_rate'] = round(annual_premium_paid / float(new_assignment['exposure_factor']), 2)
+            new_assignment['annual_premium_paid'] = annual_premium_paid
             master_data['assignments'].append(new_assignment)
             # Secondary only if teens present OR more drivers than vehicles
             if has_teens or num_drivers > num_vehicles:
@@ -459,12 +479,20 @@ def _reassign_drivers_to_vehicles(master_data: Dict[str, List[Dict[str, Any]]],
                         'end_date': '',
                         'status': 'active'
                     }
+                    # Calculate and store the annual premium for this assignment
+                    annual_premium_paid = _calculate_assignment_premium_for_storage(new_secondary_assignment, vehicle, secondary_driver, current_date, assignment_type)
+                    new_secondary_assignment['annual_premium_rate'] = round(annual_premium_paid / float(new_secondary_assignment['exposure_factor']), 2)
+                    new_secondary_assignment['annual_premium_paid'] = annual_premium_paid
                     master_data['assignments'].append(new_secondary_assignment)
                     
                     # CRITICAL FIX: Only reduce primary adult's exposure if secondary is also an adult
                     # If secondary is a teen, primary adult keeps 1.0 exposure
                     if assignment_type == 'secondary_adult':
                         new_assignment['exposure_factor'] = CONFIG['driver_assignment']['exposure_allocations']['primary_shared']
+                        # Recalculate premium for primary assignment with updated exposure factor
+                        annual_premium_paid = _calculate_assignment_premium_for_storage(new_assignment, vehicle, primary_driver, current_date, assignment_type)
+                        new_assignment['annual_premium_rate'] = round(annual_premium_paid / float(new_assignment['exposure_factor']), 2)
+                        new_assignment['annual_premium_paid'] = annual_premium_paid
     
     # Recalculate premiums after driver reassignments
     _recalculate_policy_premiums(master_data, family_id)
@@ -547,14 +575,16 @@ def _add_adult(master_data: Dict[str, List[Dict[str, Any]]],
         'driver_name': driver_name,
         'driver_type': 'adult',
         'age': str(driver_age),
+        'age_at_issuance': str(driver_age),  # For new drivers, age_at_issuance = current age
         'birthday': f"{current_date.year - driver_age}-{random.randint(1,12):02d}-{random.randint(1,28):02d}",
+        'effective_date': current_date.strftime('%Y-%m-%d'),
         'status': 'active'
     }
     
     master_data['drivers'].append(new_driver)
     
-    # Reassign drivers to vehicles with new driver
-    _reassign_drivers_to_vehicles(master_data, family_id, current_date)
+    # Reassign drivers to vehicles with new driver (use 'new_driver' assignment type)
+    _reassign_drivers_to_vehicles(master_data, family_id, current_date, 'new_driver')
     
     return {
         'change_type': 'adult_addition',
@@ -629,14 +659,16 @@ def _add_teen(master_data: Dict[str, List[Dict[str, Any]]],
         'driver_name': driver_name,
         'driver_type': 'teen',
         'age': str(driver_age),
+        'age_at_issuance': str(driver_age),  # For new drivers, age_at_issuance = current age
         'birthday': f"{current_date.year - driver_age}-{random.randint(1,12):02d}-{random.randint(1,28):02d}",
+        'effective_date': current_date.strftime('%Y-%m-%d'),
         'status': 'active'
     }
     
     master_data['drivers'].append(new_driver)
     
     # Reassign drivers to vehicles with new teen driver
-    _reassign_drivers_to_vehicles(master_data, family_id, current_date)
+    _reassign_drivers_to_vehicles(master_data, family_id, current_date, 'new_driver')
     
     return {
         'change_type': 'teen_addition',
@@ -837,10 +869,7 @@ def _calculate_single_policy_premium(assignments: List[Dict[str, Any]],
             driver_type_factor = calc_config["driver_type_factors"].get(driver_type, 1.0)
             assignment_premium *= driver_type_factor
             
-            # Add some random variation
-            std_dev = CONFIG['policies']['premium']['standard_deviation']
-            variation = random.normalvariate(0, std_dev * 0.1)  # 10% of std dev for variation
-            assignment_premium += variation
+            # No random variation - deterministic premium calculation
             
             total_premium += assignment_premium
     
@@ -866,6 +895,60 @@ def _get_age_factor(age: int, age_factors: Dict) -> float:
     return 1.0
 
 
+def _process_policy_renewals(master_data: Dict[str, List[Dict[str, Any]]], current_date: datetime) -> List[Dict[str, Any]]:
+    """Process policy renewals when current date matches expiry date."""
+    renewal_changes = []
+    
+    for policy in master_data['policies']:
+        if policy['status'] != 'active':
+            continue
+            
+        expiry_date = datetime.strptime(policy['current_expiry_date'], '%Y-%m-%d')
+        
+        # Check if policy is due for renewal
+        if current_date.date() == expiry_date.date():
+            family_id = policy['family_id']
+            
+            # Update driver ages_at_issuance for renewal
+            _update_driver_ages_at_renewal(master_data, family_id, current_date)
+            
+            # Extend policy expiry date by 1 year
+            new_expiry_date = expiry_date + timedelta(days=365)
+            policy['current_expiry_date'] = new_expiry_date.strftime('%Y-%m-%d')
+            
+            # Recalculate premiums with new ages_at_issuance
+            _recalculate_policy_premiums(master_data, family_id)
+            
+            renewal_changes.append({
+                'change_type': 'policy_renewal',
+                'date': current_date.strftime('%Y-%m-%d'),
+                'family_id': family_id,
+                'policy_no': policy['policy_no'],
+                'old_expiry_date': expiry_date.strftime('%Y-%m-%d'),
+                'new_expiry_date': new_expiry_date.strftime('%Y-%m-%d'),
+                'reason': 'annual_renewal'
+            })
+    
+    return renewal_changes
+
+
+def _update_driver_ages_at_renewal(master_data: Dict[str, List[Dict[str, Any]]], 
+                                  family_id: str, renewal_date: datetime) -> None:
+    """Update driver ages_at_issuance at policy renewal."""
+    family_drivers = [d for d in master_data['drivers'] if d['family_id'] == family_id and d['status'] == 'active']
+    
+    for driver in family_drivers:
+        # Calculate current age at renewal
+        birthday = datetime.strptime(driver['birthday'], '%Y-%m-%d')
+        current_age = renewal_date.year - birthday.year
+        if (renewal_date.month, renewal_date.day) < (birthday.month, birthday.day):
+            current_age -= 1
+        
+        # Update age_at_issuance to current age (renewal resets age constancy)
+        driver['age_at_issuance'] = str(current_age)
+        driver['age'] = str(current_age)  # Also update current age
+
+
 def _apply_annual_premium_increases(master_data: Dict[str, List[Dict[str, Any]]], year: int) -> None:
     """Apply annual premium increases based on inflation rate."""
     if year <= 2018:  # Don't apply increases in the first year
@@ -881,6 +964,75 @@ def _apply_annual_premium_increases(master_data: Dict[str, List[Dict[str, Any]]]
             policy['premium_paid'] = round(new_premium, 2)
     
     print(f"    Applied {inflation_rate*100:.1f}% premium increase for {year}")
+
+
+def _get_driver_age_for_premium_calculation(driver: Dict[str, Any], 
+                                          assignment_type: str, 
+                                          current_date: datetime) -> int:
+    """
+    Get the appropriate driver age for premium calculation based on age constancy rules.
+    
+    Rules:
+    1. Vehicle substitution: Use age_at_issuance
+    2. Driver deletion/reassignment: Use age_at_issuance  
+    3. New driver addition: Use current age
+    4. New vehicle addition: Use current age
+    5. Existing assignment: Use age_at_issuance
+    """
+    if assignment_type in ['vehicle_substitution', 'driver_reassignment', 'existing_assignment']:
+        return int(driver.get('age_at_issuance', driver['age']))
+    else:  # new_driver, new_vehicle
+        return int(driver['age'])
+
+
+def _calculate_historical_age_at_issuance(driver: Dict[str, Any], 
+                                        policy_start_date: datetime) -> int:
+    """Calculate what the driver's age was at policy issuance."""
+    birthday = datetime.strptime(driver['birthday'], '%Y-%m-%d')
+    issuance_age = policy_start_date.year - birthday.year
+    if (policy_start_date.month, policy_start_date.day) < (birthday.month, birthday.day):
+        issuance_age -= 1
+    return issuance_age
+
+
+def _calculate_assignment_premium_for_storage(assignment: Dict[str, Any], 
+                                            vehicle: Dict[str, Any], 
+                                            driver: Dict[str, Any], 
+                                            current_date: datetime,
+                                            assignment_type: str = 'existing_assignment') -> float:
+    """Calculate the annual premium for an assignment to store in assignments data."""
+    base_premium = CONFIG['policies']['premium']['base_amount']
+    calc_config = CONFIG['policies']['premium']['calculation']
+    
+    # Calculate the base premium rate for this assignment (before exposure factor)
+    assignment_premium_rate = base_premium
+    
+    # Apply vehicle type factor
+    vehicle_type = vehicle["vehicle_type"]
+    vehicle_factor = calc_config["vehicle_type_factors"].get(vehicle_type, 1.0)
+    assignment_premium_rate *= vehicle_factor
+    
+    # Apply driver age factor using age constancy rules
+    driver_age = _get_driver_age_for_premium_calculation(driver, assignment_type, current_date)
+    age_factor = _get_age_factor(driver_age, calc_config["driver_age_factors"])
+    assignment_premium_rate *= age_factor
+    
+    # Apply driver type factor (use assignment_type, not driver_type)
+    assignment_type_key = assignment["assignment_type"]
+    # Map secondary_adult to secondary for config lookup
+    config_key = assignment_type_key if assignment_type_key != 'secondary_adult' else 'secondary'
+    driver_type_factor = calc_config["driver_type_factors"].get(config_key, 1.0)
+    assignment_premium_rate *= driver_type_factor
+    
+    # Apply historical inflation adjustments
+    inflation_rate = CONFIG['policies']['premium']['annual_inflation_rate']
+    years_from_2018 = current_date.year - 2018
+    assignment_premium_rate *= ((1 + inflation_rate) ** years_from_2018)
+    
+    # Calculate annual premium paid (rate * exposure factor)
+    annual_premium_paid = assignment_premium_rate * float(assignment["exposure_factor"])
+    
+    return round(annual_premium_paid, 2)
 
 
 if __name__ == "__main__":

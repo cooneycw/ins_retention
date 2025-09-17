@@ -74,6 +74,7 @@ class InforceDataLoader:
             StructField("assignment_type", StringType(), True),
             StructField("exposure_factor", DoubleType(), True),
             StructField("driver_age", IntegerType(), True),
+            StructField("premium_rate", DoubleType(), True),
             StructField("premium_paid", DoubleType(), True)
         ])
     

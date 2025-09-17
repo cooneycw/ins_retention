@@ -150,15 +150,28 @@ def _generate_monthly_inforce_records(master_data: Dict[str, List[Dict[str, Any]
             if not vehicle:
                 continue
             
-            # Get driver for this assignment
+            # Get driver for this assignment (use historical driver data)
             driver = next((d for d in master_data['drivers'] 
-                          if d['family_id'] == family_id and d['driver_no'] == assignment['driver_no']), None)
+                          if d['family_id'] == family_id and d['driver_no'] == assignment['driver_no'] and
+                          datetime.strptime(d['effective_date'], '%Y-%m-%d') <= current_date), None)
             if not driver:
                 continue
+            
+            # Use age_at_issuance for age constancy (existing assignments preserve original age)
+            # For inforce calculation, we use the age that was in effect at assignment time
+            age_for_calculation = int(driver.get('age_at_issuance', driver['age']))
+            
+            # Create a copy of driver data with age_at_issuance
+            historical_driver = driver.copy()
+            historical_driver['age'] = str(age_for_calculation)
             
             # Calculate actual client tenure days
             policy_start_date = datetime.strptime(policy['start_date'], '%Y-%m-%d')
             tenure_days = (current_date - policy_start_date).days
+            
+            # Calculate premium rate and premium for this assignment using historical driver data
+            premium_rate = _calculate_assignment_premium_rate(assignment, vehicle, historical_driver, current_date)
+            premium_paid = premium_rate * float(assignment['exposure_factor'])
             
             # Create inforce record
             inforce_record = {
@@ -177,13 +190,65 @@ def _generate_monthly_inforce_records(master_data: Dict[str, List[Dict[str, Any]
                 "driver_type": driver['driver_type'],
                 "assignment_type": assignment['assignment_type'],
                 "exposure_factor": assignment['exposure_factor'],
-                "driver_age": driver['age'],
-                "premium_paid": policy['premium_paid']
+                "driver_age": str(age_for_calculation),
+                "premium_rate": premium_rate,
+                "premium_paid": round(premium_paid, 2)
             }
             
             records.append(inforce_record)
     
     return records
+
+
+def _calculate_assignment_premium_rate(assignment: Dict[str, Any], 
+                                     vehicle: Dict[str, Any], 
+                                     driver: Dict[str, Any], 
+                                     current_date: datetime) -> float:
+    """Calculate the premium rate for a specific driver-vehicle assignment at a historical date."""
+    
+    # Import the premium calculation logic from apply_changes_proper
+    import sys
+    from pathlib import Path
+    sys.path.append(str(Path(__file__).parent))
+    from apply_changes_proper import _get_age_factor
+    
+    base_premium = CONFIG['policies']['premium']['base_amount']
+    calc_config = CONFIG['policies']['premium']['calculation']
+    
+    # Calculate the base premium rate for this assignment (before exposure factor)
+    assignment_premium_rate = base_premium
+    
+    # Apply vehicle type factor
+    vehicle_type = vehicle["vehicle_type"]
+    vehicle_factor = calc_config["vehicle_type_factors"].get(vehicle_type, 1.0)
+    assignment_premium_rate *= vehicle_factor
+    
+    # Apply driver age factor
+    driver_age = int(driver["age"])
+    age_factor = _get_age_factor(driver_age, calc_config["driver_age_factors"])
+    assignment_premium_rate *= age_factor
+    
+    # Apply driver type factor (use assignment_type, not driver_type)
+    assignment_type = assignment["assignment_type"]
+    # Map secondary_adult to secondary for config lookup
+    config_key = assignment_type if assignment_type != 'secondary_adult' else 'secondary'
+    driver_type_factor = calc_config["driver_type_factors"].get(config_key, 1.0)
+    assignment_premium_rate *= driver_type_factor
+    
+    # Apply historical inflation adjustments
+    # We need to determine how many years of inflation to apply
+    # For now, let's use a simple approach based on the current date
+    inflation_rate = CONFIG['policies']['premium']['annual_inflation_rate']
+    years_from_2018 = current_date.year - 2018
+    assignment_premium_rate *= ((1 + inflation_rate) ** years_from_2018)
+    
+    # Return annual premium rate (no division by 12)
+    # The 1/12 adjustment will be handled in reconciliation logic
+    annual_premium_rate = assignment_premium_rate
+    
+    # No random variation - deterministic premium calculation
+    # Round to 2 decimal places
+    return round(annual_premium_rate, 2)
 
 
 def _get_policy_cancellation_date(master_data: Dict[str, List[Dict[str, Any]]], family_id: str) -> datetime:
