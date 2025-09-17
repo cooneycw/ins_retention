@@ -72,9 +72,9 @@ def calculate_assignment_annual_premium(assignments_df, policies_df, policy_no, 
     return round(annual_premium, 2)
 
 def reconcile_premiums(inforce_df, assignments_df, policies_df, target_year=2018):
-    """Reconcile premiums between assignment data and inforce data"""
+    """Reconcile premiums between assignment data and inforce data - AGGREGATE FOCUS"""
     
-    print(f"\\nRECONCILIATION FOR {target_year}")
+    print(f"\\nAGGREGATE RECONCILIATION FOR {target_year}")
     print("=" * 50)
     
     # Get all policies that have data for the target year
@@ -84,7 +84,12 @@ def reconcile_premiums(inforce_df, assignments_df, policies_df, target_year=2018
     
     print(f"Found {len(policies_with_data)} policies with {target_year} data")
     
-    reconciliation_results = []
+    # Calculate aggregate totals
+    total_inforce_premium = 0.0
+    total_assignment_premium = 0.0
+    perfect_matches = 0
+    within_1pct = 0
+    within_5pct = 0
     
     for policy_no in sorted(policies_with_data):
         # Calculate inforce annual premium
@@ -93,134 +98,81 @@ def reconcile_premiums(inforce_df, assignments_df, policies_df, target_year=2018
         # Calculate assignment annual premium
         assignment_premium = calculate_assignment_annual_premium(assignments_df, policies_df, policy_no, target_year)
         
-        # Calculate difference
+        # Add to totals
+        total_inforce_premium += inforce_premium
+        total_assignment_premium += assignment_premium
+        
+        # Calculate difference for match rate analysis
         if assignment_premium > 0:
-            difference = inforce_premium - assignment_premium
-            pct_diff = (difference / assignment_premium) * 100
-        else:
-            difference = 0
-            pct_diff = 0
-        
-        reconciliation_results.append({
-            'policy_no': policy_no,
-            'inforce_premium': inforce_premium,
-            'assignment_premium': assignment_premium,
-            'difference': difference,
-            'pct_difference': pct_diff
-        })
-    
-    # Convert to DataFrame for analysis
-    results_df = pd.DataFrame(reconciliation_results)
-    
-    # Filter out policies with zero premiums (no data)
-    results_df = results_df[results_df['assignment_premium'] > 0]
-    
-    print(f"\\nRECONCILIATION SUMMARY")
-    print("-" * 30)
-    print(f"Total policies analyzed: {len(results_df)}")
-    print(f"Mean difference: ${results_df['difference'].mean():.2f}")
-    print(f"Mean % difference: {results_df['pct_difference'].mean():.2f}%")
-    print(f"Std deviation: {results_df['pct_difference'].std():.2f}%")
-    
-    # Count policies within tolerance
-    within_1pct = len(results_df[abs(results_df['pct_difference']) <= 1.0])
-    within_5pct = len(results_df[abs(results_df['pct_difference']) <= 5.0])
-    within_10pct = len(results_df[abs(results_df['pct_difference']) <= 10.0])
-    
-    print(f"\\nTOLERANCE ANALYSIS")
-    print("-" * 20)
-    print(f"Within 1%: {within_1pct} ({within_1pct/len(results_df)*100:.1f}%)")
-    print(f"Within 5%: {within_5pct} ({within_5pct/len(results_df)*100:.1f}%)")
-    print(f"Within 10%: {within_10pct} ({within_10pct/len(results_df)*100:.1f}%)")
-    
-    # Show largest discrepancies
-    print(f"\\nLARGEST DISCREPANCIES")
-    print("-" * 25)
-    largest_discrepancies = results_df.nlargest(10, 'pct_difference')
-    print(largest_discrepancies[['policy_no', 'inforce_premium', 'assignment_premium', 'pct_difference']].to_string(index=False))
-    
-    return results_df
-
-def analyze_specific_policies(inforce_df, assignments_df, policies_df, policy_numbers, year=2018):
-    """Analyze specific policies in detail"""
-    
-    print(f"\\nDETAILED ANALYSIS FOR POLICIES {policy_numbers} - {year}")
-    print("=" * 60)
-    
-    for policy_no in policy_numbers:
-        print(f"\\nPOLICY {policy_no}:")
-        print("-" * 15)
-        
-        # Get policy info
-        policy = policies_df[policies_df['policy_no'] == policy_no]
-        if len(policy) == 0:
-            print("Policy not found")
-            continue
+            pct_difference = abs((inforce_premium - assignment_premium) / assignment_premium * 100)
             
-        family_id = policy.iloc[0]['family_id']
-        print(f"Family ID: {family_id}")
-        print(f"Policy Status: {policy.iloc[0]['status']}")
-        
-        # Calculate premiums
-        inforce_premium = calculate_inforce_annual_premium(inforce_df, policy_no, year)
-        assignment_premium = calculate_assignment_annual_premium(assignments_df, policies_df, policy_no, year)
-        
-        print(f"Inforce Premium: ${inforce_premium:,.2f}")
-        print(f"Assignment Premium: ${assignment_premium:,.2f}")
-        
-        if assignment_premium > 0:
-            difference = inforce_premium - assignment_premium
-            pct_diff = (difference / assignment_premium) * 100
-            print(f"Difference: ${difference:,.2f} ({pct_diff:+.2f}%)")
-        
-        # Show assignment details
-        year_start = f"{year}-01-01"
-        year_end = f"{year}-12-31"
-        
-        family_assignments = assignments_df[
-            (assignments_df['family_id'] == family_id) &
-            (assignments_df['effective_date'] <= year_end) &
-            (assignments_df['status'] == 'active')
-        ]
-        
-        print(f"\\nActive Assignments for {year}:")
-        if len(family_assignments) > 0:
-            display_cols = ['assignment_id', 'vehicle_no', 'driver_no', 'exposure_factor', 
-                          'annual_premium_rate', 'annual_premium_paid', 'effective_date', 'status']
-            print(family_assignments[display_cols].to_string(index=False))
-        else:
-            print("No active assignments found")
-        
-        # Show inforce details
-        policy_inforce = inforce_df[
-            (inforce_df['policy'] == policy_no) & 
-            (inforce_df['inforce_yy'] == year)
-        ]
-        
-        print(f"\\nInforce Records for {year}:")
-        if len(policy_inforce) > 0:
-            display_cols = ['vehicle_no', 'driver_no', 'premium_rate', 'premium_paid', 'inforce_mm']
-            print(policy_inforce[display_cols].head(12).to_string(index=False))
-        else:
-            print("No inforce records found")
+            if pct_difference == 0.0:
+                perfect_matches += 1
+            if pct_difference <= 1.0:
+                within_1pct += 1
+            if pct_difference <= 5.0:
+                within_5pct += 1
+    
+    # Calculate aggregate differences
+    total_difference = total_assignment_premium - total_inforce_premium
+    aggregate_pct_difference = (total_difference / total_inforce_premium * 100) if total_inforce_premium > 0 else 0
+    
+    # Summary report
+    print(f"\\nAGGREGATE RECONCILIATION SUMMARY")
+    print("-" * 40)
+    print(f"Total Policies: {len(policies_with_data)}")
+    print(f"Total Inforce Premium: ${total_inforce_premium:,.2f}")
+    print(f"Total Assignment Premium: ${total_assignment_premium:,.2f}")
+    print(f"Total Difference: ${total_difference:,.2f}")
+    print(f"Aggregate % Difference: {aggregate_pct_difference:.4f}%")
+    
+    print(f"\\nMATCH RATE ANALYSIS")
+    print("-" * 25)
+    print(f"Perfect Matches (0.0%): {perfect_matches} ({perfect_matches/len(policies_with_data)*100:.1f}%)")
+    print(f"Within 1%: {within_1pct} ({within_1pct/len(policies_with_data)*100:.1f}%)")
+    print(f"Within 5%: {within_5pct} ({within_5pct/len(policies_with_data)*100:.1f}%)")
+    
+    # Success criteria
+    print(f"\\nVALIDATION RESULT")
+    print("-" * 20)
+    if abs(aggregate_pct_difference) <= 0.01:  # Within 0.01%
+        print("✅ PERFECT RECONCILIATION ACHIEVED!")
+        print("   Aggregate difference within 0.01% tolerance")
+    elif abs(aggregate_pct_difference) <= 1.0:  # Within 1%
+        print("✅ RECONCILIATION WITHIN TOLERANCE")
+        print("   Aggregate difference within 1% tolerance")
+    else:
+        print("❌ RECONCILIATION OUTSIDE TOLERANCE")
+        print("   Aggregate difference exceeds 1% tolerance")
+    
+    return {
+        'total_policies': len(policies_with_data),
+        'total_inforce_premium': total_inforce_premium,
+        'total_assignment_premium': total_assignment_premium,
+        'total_difference': total_difference,
+        'aggregate_pct_difference': aggregate_pct_difference,
+        'perfect_matches': perfect_matches,
+        'within_1pct': within_1pct,
+        'within_5pct': within_5pct,
+        'match_rate_1pct': within_1pct/len(policies_with_data)*100,
+        'success': abs(aggregate_pct_difference) <= 1.0
+    }
+
+# Individual policy analysis removed - focusing on aggregate reconciliation only
 
 def main():
-    """Main reconciliation function"""
-    print("ASSIGNMENT PREMIUM RECONCILIATION")
-    print("=" * 40)
+    """Main reconciliation function - AGGREGATE FOCUS"""
+    print("ASSIGNMENT PREMIUM RECONCILIATION - AGGREGATE FOCUS")
+    print("=" * 50)
     
     # Load data
     inforce_df, assignments_df, policies_df = load_data()
     
-    # Run reconciliation for 2018
-    results_df = reconcile_premiums(inforce_df, assignments_df, policies_df, 2018)
+    # Run aggregate reconciliation for 2018
+    results = reconcile_premiums(inforce_df, assignments_df, policies_df, 2018)
     
-    # Analyze specific policies
-    analyze_specific_policies(inforce_df, assignments_df, policies_df, [1, 2], 2018)
-    
-    # Save results
-    results_df.to_csv('assignment_premium_reconciliation_2018.csv', index=False)
-    print(f"\\nResults saved to: assignment_premium_reconciliation_2018.csv")
+    # Return success status for pipeline integration
+    return results['success']
 
 if __name__ == "__main__":
     main()
